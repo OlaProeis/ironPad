@@ -121,7 +121,11 @@ async fn main() {
             // Small delay to ensure server is ready
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
             if let Err(e) = webbrowser::open(&url) {
-                tracing::warn!("Failed to open browser: {}. Open http://localhost:{} manually.", e, port);
+                tracing::warn!(
+                    "Failed to open browser: {}. Open http://localhost:{} manually.",
+                    e,
+                    port
+                );
             }
         });
     }

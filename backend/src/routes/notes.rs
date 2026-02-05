@@ -1,17 +1,10 @@
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 
 use crate::models::note::{Note, NoteSummary};
 use crate::services::filesystem;
 
 pub fn router() -> Router {
-    Router::new()
-        .route("/{id}", get(get_note).put(update_note).delete(delete_note))
+    Router::new().route("/{id}", get(get_note).put(update_note).delete(delete_note))
 }
 
 pub async fn list_notes() -> impl IntoResponse {
@@ -50,10 +43,7 @@ pub async fn create_note() -> impl IntoResponse {
     }
 }
 
-async fn update_note(
-    Path(id): Path<String>,
-    body: String,
-) -> impl IntoResponse {
+async fn update_note(Path(id): Path<String>, body: String) -> impl IntoResponse {
     match filesystem::update_note(&id, &body) {
         Ok(note) => Json::<Note>(note).into_response(),
         Err(err) if err.starts_with("Note not found") => {

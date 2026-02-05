@@ -1,17 +1,13 @@
 use axum::{
-    body::Bytes,
-    extract::Path,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
+    body::Bytes, extract::Path, http::StatusCode, response::IntoResponse, routing::get, Json,
+    Router,
 };
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-use crate::services::filesystem;
 use crate::config;
+use crate::services::filesystem;
 use crate::services::frontmatter;
 
 #[derive(Debug, Serialize)]
@@ -35,7 +31,12 @@ pub fn router() -> Router {
     Router::new()
         .route("/", get(list_daily_notes))
         .route("/today", get(get_or_create_today))
-        .route("/{date}", get(get_daily_note).post(create_daily_note).put(update_daily_note))
+        .route(
+            "/{date}",
+            get(get_daily_note)
+                .post(create_daily_note)
+                .put(update_daily_note),
+        )
 }
 
 /// List all daily notes
@@ -52,7 +53,7 @@ async fn list_daily_notes() -> impl IntoResponse {
 
 fn list_daily_notes_impl() -> Result<Vec<DailyNoteSummary>, String> {
     let daily_dir = config::data_dir().join("daily");
-    
+
     // Create directory if it doesn't exist
     if !daily_dir.exists() {
         fs::create_dir_all(&daily_dir).map_err(|e| e.to_string())?;
@@ -70,7 +71,7 @@ fn list_daily_notes_impl() -> Result<Vec<DailyNoteSummary>, String> {
         }
 
         let filename = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        
+
         // Validate date format
         if NaiveDate::parse_from_str(filename, "%Y-%m-%d").is_err() {
             continue;
@@ -102,7 +103,7 @@ fn list_daily_notes_impl() -> Result<Vec<DailyNoteSummary>, String> {
 /// Get or create today's daily note
 async fn get_or_create_today() -> impl IntoResponse {
     let today = Utc::now().format("%Y-%m-%d").to_string();
-    
+
     match get_daily_note_impl(&today) {
         Ok(note) => Json(note).into_response(),
         Err(_) => {
@@ -123,14 +124,16 @@ async fn get_or_create_today() -> impl IntoResponse {
 async fn get_daily_note(Path(date): Path<String>) -> impl IntoResponse {
     // Validate date format
     if NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
-        return (StatusCode::BAD_REQUEST, "Invalid date format. Use YYYY-MM-DD").into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            "Invalid date format. Use YYYY-MM-DD",
+        )
+            .into_response();
     }
 
     match get_daily_note_impl(&date) {
         Ok(note) => Json(note).into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to get daily note: {}", err),
@@ -171,16 +174,18 @@ async fn create_daily_note(
 ) -> impl IntoResponse {
     // Validate date format
     if NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
-        return (StatusCode::BAD_REQUEST, "Invalid date format. Use YYYY-MM-DD").into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            "Invalid date format. Use YYYY-MM-DD",
+        )
+            .into_response();
     }
 
     let content = body.and_then(|b| b.content.clone());
 
     match create_daily_note_impl(&date, content.as_deref()) {
         Ok(note) => (StatusCode::CREATED, Json(note)).into_response(),
-        Err(err) if err.contains("already exists") => {
-            (StatusCode::CONFLICT, err).into_response()
-        }
+        Err(err) if err.contains("already exists") => (StatusCode::CONFLICT, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to create daily note: {}", err),
@@ -191,7 +196,7 @@ async fn create_daily_note(
 
 fn create_daily_note_impl(date: &str, initial_content: Option<&str>) -> Result<DailyNote, String> {
     let daily_dir = config::data_dir().join("daily");
-    
+
     // Create directory if it doesn't exist
     if !daily_dir.exists() {
         fs::create_dir_all(&daily_dir).map_err(|e| e.to_string())?;
@@ -204,10 +209,9 @@ fn create_daily_note_impl(date: &str, initial_content: Option<&str>) -> Result<D
     }
 
     let now = Utc::now().to_rfc3339();
-    
+
     // Parse date for display
-    let parsed_date = NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .map_err(|e| e.to_string())?;
+    let parsed_date = NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|e| e.to_string())?;
     let display_date = parsed_date.format("%A, %B %d, %Y").to_string();
 
     // Create frontmatter
@@ -238,14 +242,12 @@ fn create_daily_note_impl(date: &str, initial_content: Option<&str>) -> Result<D
     );
 
     // Use provided content or default template
-    let body = initial_content
-        .map(|c| c.to_string())
-        .unwrap_or_else(|| {
-            format!(
-                "# {}\n\n## Today's Focus\n\n- \n\n## Notes\n\n\n\n## Tasks\n\n- [ ] \n",
-                display_date
-            )
-        });
+    let body = initial_content.map(|c| c.to_string()).unwrap_or_else(|| {
+        format!(
+            "# {}\n\n## Today's Focus\n\n- \n\n## Notes\n\n\n\n## Tasks\n\n- [ ] \n",
+            display_date
+        )
+    });
 
     let content = frontmatter::serialize_frontmatter(&fm, &body)?;
 
@@ -261,22 +263,21 @@ fn create_daily_note_impl(date: &str, initial_content: Option<&str>) -> Result<D
 }
 
 /// Update a daily note's content
-async fn update_daily_note(
-    Path(date): Path<String>,
-    body: Bytes,
-) -> impl IntoResponse {
+async fn update_daily_note(Path(date): Path<String>, body: Bytes) -> impl IntoResponse {
     // Validate date format
     if NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
-        return (StatusCode::BAD_REQUEST, "Invalid date format. Use YYYY-MM-DD").into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            "Invalid date format. Use YYYY-MM-DD",
+        )
+            .into_response();
     }
 
     let content = String::from_utf8_lossy(&body).to_string();
 
     match update_daily_note_impl(&date, &content) {
         Ok(note) => Json(note).into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to update daily note: {}", err),

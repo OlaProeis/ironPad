@@ -147,11 +147,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                     if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
                         handle_client_message(&state_clone, &client_id_clone, client_msg).await;
                     } else {
-                        tracing::debug!(
-                            "Unknown message from {}: {}",
-                            client_id_clone,
-                            text
-                        );
+                        tracing::debug!("Unknown message from {}: {}", client_id_clone, text);
                     }
                 }
                 Message::Close(_) => break,
@@ -195,7 +191,11 @@ async fn handle_client_message(state: &Arc<WsState>, client_id: &str, msg: Clien
                 }
             };
 
-            match state.lock_manager.acquire(&path, client_id, lock_type).await {
+            match state
+                .lock_manager
+                .acquire(&path, client_id, lock_type)
+                .await
+            {
                 Ok(lock_info) => {
                     let lock_type_str = match lock_info.lock_type {
                         LockType::Editor => "editor",

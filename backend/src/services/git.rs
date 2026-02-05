@@ -161,8 +161,7 @@ pub fn get_status() -> Result<RepoStatus, String> {
         Some(CommitInfo {
             id: commit.id().to_string()[..8].to_string(),
             message: commit.message()?.trim().to_string(),
-            timestamp: chrono::DateTime::from_timestamp(commit.time().seconds(), 0)?
-                .to_rfc3339(),
+            timestamp: chrono::DateTime::from_timestamp(commit.time().seconds(), 0)?.to_rfc3339(),
         })
     });
 
@@ -311,14 +310,16 @@ pub fn push_to_remote() -> Result<(), String> {
         .map_err(|e| format!("Remote 'origin' not found: {}", e))?;
 
     // Check if remote URL is configured
-    let remote_url = remote.url().ok_or_else(|| "No remote URL configured".to_string())?;
+    let remote_url = remote
+        .url()
+        .ok_or_else(|| "No remote URL configured".to_string())?;
     if remote_url.is_empty() {
         return Err("No remote URL configured".to_string());
     }
 
     // Create callbacks for authentication
     let mut callbacks = git2::RemoteCallbacks::new();
-    
+
     // Try to use credential helper from git config
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
         // Try SSH agent first
@@ -402,9 +403,7 @@ pub fn get_log(limit: Option<usize>) -> Result<Vec<CommitDetail>, String> {
             let commit_tree = commit.tree().ok();
 
             if let (Some(pt), Some(ct)) = (parent_tree, commit_tree) {
-                let diff = repo
-                    .diff_tree_to_tree(Some(&pt), Some(&ct), None)
-                    .ok();
+                let diff = repo.diff_tree_to_tree(Some(&pt), Some(&ct), None).ok();
                 diff.map(|d| d.deltas().count()).unwrap_or(0)
             } else {
                 0
@@ -418,10 +417,9 @@ pub fn get_log(limit: Option<usize>) -> Result<Vec<CommitDetail>, String> {
                 .unwrap_or(0)
         };
 
-        let timestamp =
-            chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
-                .map(|dt| dt.to_rfc3339())
-                .unwrap_or_else(|| "Unknown".to_string());
+        let timestamp = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "Unknown".to_string());
 
         commits.push(CommitDetail {
             id: oid.to_string(),
@@ -449,10 +447,7 @@ pub fn get_working_diff() -> Result<DiffInfo, String> {
     let repo = Repository::open(data_path).map_err(|e| format!("Not a git repository: {}", e))?;
 
     // Get HEAD tree (or empty tree if no commits)
-    let head_tree = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_tree().ok());
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
     // Diff against working directory
     let diff = repo
@@ -495,7 +490,7 @@ fn parse_diff(diff: &git2::Diff) -> Result<DiffInfo, String> {
 
     for delta_idx in 0..diff.deltas().count() {
         let delta = diff.get_delta(delta_idx).ok_or("Missing delta")?;
-        
+
         let path = delta
             .new_file()
             .path()
@@ -609,10 +604,7 @@ pub fn get_remote_info() -> Result<Option<RemoteInfo>, String> {
     let (ahead, behind) = if let Some(ref up) = upstream {
         // Calculate ahead/behind
         let local_oid = head.target().unwrap_or_else(git2::Oid::zero);
-        let upstream_oid = up
-            .get()
-            .target()
-            .unwrap_or_else(git2::Oid::zero);
+        let upstream_oid = up.get().target().unwrap_or_else(git2::Oid::zero);
 
         repo.graph_ahead_behind(local_oid, upstream_oid)
             .unwrap_or((0, 0))

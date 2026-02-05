@@ -8,14 +8,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::fs;
 
+use crate::config;
 use crate::routes::tasks::{
-    CreateTaskRequest, UpdateTaskMetaRequest,
-    list_project_tasks_handler, create_task_handler, get_task_handler,
-    update_task_content_handler, toggle_task_handler, update_task_meta_handler,
-    delete_task_handler,
+    create_task_handler, delete_task_handler, get_task_handler, list_project_tasks_handler,
+    toggle_task_handler, update_task_content_handler, update_task_meta_handler, CreateTaskRequest,
+    UpdateTaskMetaRequest,
 };
 use crate::services::filesystem;
-use crate::config;
 use crate::services::frontmatter;
 
 #[derive(Debug, Serialize)]
@@ -75,15 +74,34 @@ pub fn router() -> Router {
     Router::new()
         .route("/", get(list_projects).post(create_project))
         .route("/{id}", get(get_project))
-        .route("/{id}/content", get(get_project_content).put(update_project_content))
+        .route(
+            "/{id}/content",
+            get(get_project_content).put(update_project_content),
+        )
         // Task routes (file-based)
-        .route("/{id}/tasks", get(get_project_tasks).post(create_project_task))
-        .route("/{id}/tasks/{task_id}", get(get_project_task).put(update_project_task).delete(delete_project_task))
+        .route(
+            "/{id}/tasks",
+            get(get_project_tasks).post(create_project_task),
+        )
+        .route(
+            "/{id}/tasks/{task_id}",
+            get(get_project_task)
+                .put(update_project_task)
+                .delete(delete_project_task),
+        )
         .route("/{id}/tasks/{task_id}/toggle", put(toggle_project_task))
         .route("/{id}/tasks/{task_id}/meta", put(update_project_task_meta))
         // Note routes
-        .route("/{id}/notes", get(list_project_notes).post(create_project_note))
-        .route("/{id}/notes/{note_id}", get(get_project_note).put(update_project_note).delete(delete_project_note))
+        .route(
+            "/{id}/notes",
+            get(list_project_notes).post(create_project_note),
+        )
+        .route(
+            "/{id}/notes/{note_id}",
+            get(get_project_note)
+                .put(update_project_note)
+                .delete(delete_project_note),
+        )
 }
 
 // ============ Task Handlers ============
@@ -355,10 +373,7 @@ async fn get_project_content(Path(id): Path<String>) -> impl IntoResponse {
     }
 }
 
-async fn update_project_content(
-    Path(id): Path<String>,
-    body: String,
-) -> impl IntoResponse {
+async fn update_project_content(Path(id): Path<String>, body: String) -> impl IntoResponse {
     let index_path = config::data_dir()
         .join("projects")
         .join(&id)
@@ -618,7 +633,9 @@ async fn create_project_note(
         .into_response()
 }
 
-async fn get_project_note(Path((project_id, note_id)): Path<(String, String)>) -> impl IntoResponse {
+async fn get_project_note(
+    Path((project_id, note_id)): Path<(String, String)>,
+) -> impl IntoResponse {
     let notes_dir = config::data_dir()
         .join("projects")
         .join(&project_id)
@@ -638,7 +655,7 @@ async fn get_project_note(Path((project_id, note_id)): Path<(String, String)>) -
 
                 if let Ok(content) = fs::read_to_string(&path) {
                     let (fm, body, _) = frontmatter::parse_frontmatter(&content);
-                    
+
                     let file_id = fm
                         .get(&serde_yaml::Value::from("id"))
                         .and_then(|v| v.as_str())

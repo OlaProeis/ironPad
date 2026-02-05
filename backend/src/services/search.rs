@@ -33,7 +33,10 @@ pub fn search_notes(query: &str) -> Result<Vec<SearchResult>, String> {
     match search_with_ripgrep(query) {
         Ok(results) => return Ok(results),
         Err(e) => {
-            tracing::debug!("ripgrep not available, falling back to manual search: {}", e);
+            tracing::debug!(
+                "ripgrep not available, falling back to manual search: {}",
+                e
+            );
         }
     }
 
@@ -46,10 +49,12 @@ fn search_with_ripgrep(query: &str) -> Result<Vec<SearchResult>, String> {
     let data_dir_str = config::data_dir().to_string_lossy();
     let output = Command::new("rg")
         .args([
-            "--json",           // JSON output for parsing
-            "--ignore-case",    // Case insensitive
-            "--type", "md",     // Only markdown files
-            "--max-count", "5", // Max 5 matches per file
+            "--json",        // JSON output for parsing
+            "--ignore-case", // Case insensitive
+            "--type",
+            "md", // Only markdown files
+            "--max-count",
+            "5", // Max 5 matches per file
             query,
             &data_dir_str,
         ])
@@ -88,13 +93,13 @@ fn parse_ripgrep_output(output: &[u8]) -> Result<Vec<SearchResult>, String> {
                 let normalized_path = normalize_path(path_str);
                 let title = extract_title_from_path(&normalized_path);
 
-                let result = results_map.entry(normalized_path.clone()).or_insert_with(|| {
-                    SearchResult {
+                let result = results_map
+                    .entry(normalized_path.clone())
+                    .or_insert_with(|| SearchResult {
                         path: normalized_path,
                         title,
                         matches: Vec::new(),
-                    }
-                });
+                    });
 
                 result.matches.push(SearchMatch {
                     line_number,

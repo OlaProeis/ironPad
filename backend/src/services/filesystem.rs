@@ -60,7 +60,9 @@ fn is_note_file(path: &Path) -> bool {
     }
 
     // data/projects/*/index.md
-    if path_str.contains("projects") && path.file_name().and_then(|s| s.to_str()) == Some("index.md") {
+    if path_str.contains("projects")
+        && path.file_name().and_then(|s| s.to_str()) == Some("index.md")
+    {
         return true;
     }
 
@@ -123,7 +125,10 @@ pub fn normalize_path(path: &Path) -> String {
     } else {
         &path_str
     };
-    stripped.replace('\\', "/").trim_start_matches('/').to_string()
+    stripped
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string()
 }
 
 /// Read a full note by deterministic ID.
@@ -326,9 +331,7 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
     let parent = path.parent().ok_or("Invalid path")?;
     let temp_name = format!(
         ".{}.tmp",
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("file")
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("file")
     );
     let temp_path = parent.join(temp_name);
 

@@ -79,7 +79,10 @@ async fn upload_asset(
         if !is_allowed_content_type(&content_type) {
             return (
                 StatusCode::BAD_REQUEST,
-                format!("Unsupported file type: {}. Only images are allowed.", content_type),
+                format!(
+                    "Unsupported file type: {}. Only images are allowed.",
+                    content_type
+                ),
             )
                 .into_response();
         }
@@ -100,7 +103,10 @@ async fn upload_asset(
         if data.len() > MAX_FILE_SIZE {
             return (
                 StatusCode::BAD_REQUEST,
-                format!("File too large. Maximum size is {} MB.", MAX_FILE_SIZE / 1024 / 1024),
+                format!(
+                    "File too large. Maximum size is {} MB.",
+                    MAX_FILE_SIZE / 1024 / 1024
+                ),
             )
                 .into_response();
         }
@@ -149,7 +155,11 @@ async fn upload_asset(
 
 /// Validate that a path component doesn't contain directory traversal
 fn validate_path_component(component: &str) -> Result<(), String> {
-    if component.contains("..") || component.contains('/') || component.contains('\\') || component.is_empty() {
+    if component.contains("..")
+        || component.contains('/')
+        || component.contains('\\')
+        || component.is_empty()
+    {
         return Err("Invalid path component".to_string());
     }
     Ok(())
@@ -199,12 +209,7 @@ async fn get_asset(Path((project, filename)): Path<(String, String)>) -> impl In
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, content_type)],
-        body,
-    )
-        .into_response()
+    (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], body).into_response()
 }
 
 fn is_allowed_content_type(content_type: &str) -> bool {
@@ -220,11 +225,7 @@ fn is_allowed_content_type(content_type: &str) -> bool {
 }
 
 fn get_content_type(filename: &str) -> &'static str {
-    let ext = filename
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
 
     match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
@@ -248,7 +249,13 @@ fn generate_unique_filename(dir: &StdPath, original: &str) -> String {
     // Sanitize filename
     let sanitized_name: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     let base_filename = format!("{}{}", sanitized_name, ext);

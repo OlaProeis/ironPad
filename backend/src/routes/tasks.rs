@@ -1,15 +1,10 @@
-use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
-};
+use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path as StdPath;
 
-use crate::services::filesystem;
 use crate::config;
+use crate::services::filesystem;
 use crate::services::frontmatter;
 
 /// Task summary for list views
@@ -73,8 +68,7 @@ pub struct UpdateTaskMetaRequest {
 }
 
 pub fn router() -> Router {
-    Router::new()
-        .route("/", get(list_all_tasks_handler))
+    Router::new().route("/", get(list_all_tasks_handler))
 }
 
 // ============ Handler Functions (called from projects.rs) ============
@@ -96,7 +90,12 @@ pub async fn create_task_handler(
     project_id: String,
     payload: CreateTaskRequest,
 ) -> impl IntoResponse {
-    match create_task_impl(&project_id, &payload.title, payload.section.as_deref(), payload.parent_id.as_deref()) {
+    match create_task_impl(
+        &project_id,
+        &payload.title,
+        payload.section.as_deref(),
+        payload.parent_id.as_deref(),
+    ) {
         Ok(task) => (StatusCode::CREATED, Json(task)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -110,9 +109,7 @@ pub async fn create_task_handler(
 pub async fn get_task_handler(project_id: String, task_id: String) -> impl IntoResponse {
     match get_task_impl(&project_id, &task_id) {
         Ok(task) => Json(task).into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to get task: {}", err),
@@ -129,9 +126,7 @@ pub async fn update_task_content_handler(
 ) -> impl IntoResponse {
     match update_task_content_impl(&project_id, &task_id, &body) {
         Ok(task) => Json(task).into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to update task: {}", err),
@@ -144,9 +139,7 @@ pub async fn update_task_content_handler(
 pub async fn toggle_task_handler(project_id: String, task_id: String) -> impl IntoResponse {
     match toggle_task_impl(&project_id, &task_id) {
         Ok(task) => Json(task).into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to toggle task: {}", err),
@@ -163,9 +156,7 @@ pub async fn update_task_meta_handler(
 ) -> impl IntoResponse {
     match update_task_meta_impl(&project_id, &task_id, payload) {
         Ok(task) => Json(task).into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to update task metadata: {}", err),
@@ -178,9 +169,7 @@ pub async fn update_task_meta_handler(
 pub async fn delete_task_handler(project_id: String, task_id: String) -> impl IntoResponse {
     match delete_task_impl(&project_id, &task_id) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(err) if err.contains("not found") => {
-            (StatusCode::NOT_FOUND, err).into_response()
-        }
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to delete task: {}", err),
@@ -483,11 +472,7 @@ fn toggle_task_impl(project_id: &str, task_id: &str) -> Result<Task, String> {
     );
 
     // Update section based on completion status
-    let new_section = if new_completed {
-        "Completed"
-    } else {
-        "Active"
-    };
+    let new_section = if new_completed { "Completed" } else { "Active" };
     fm.insert(
         serde_yaml::Value::from("section"),
         serde_yaml::Value::from(new_section),
@@ -554,14 +539,22 @@ fn toggle_task_impl(project_id: &str, task_id: &str) -> Result<Task, String> {
     }
 
     // Return updated task
-    let task = parse_task_file(&fs::read_to_string(&task_path).unwrap(), &task_path, project_id)
-        .ok_or_else(|| "Failed to parse updated task".to_string())?;
+    let task = parse_task_file(
+        &fs::read_to_string(&task_path).unwrap(),
+        &task_path,
+        project_id,
+    )
+    .ok_or_else(|| "Failed to parse updated task".to_string())?;
 
     Ok(task)
 }
 
-fn calculate_next_due_date(current_due: Option<&str>, recurrence: &str, interval: i64) -> Option<String> {
-    use chrono::{NaiveDate, Duration, Utc, Months};
+fn calculate_next_due_date(
+    current_due: Option<&str>,
+    recurrence: &str,
+    interval: i64,
+) -> Option<String> {
+    use chrono::{Duration, Months, NaiveDate, Utc};
 
     let base_date = if let Some(due_str) = current_due {
         NaiveDate::parse_from_str(due_str, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive())
@@ -600,28 +593,73 @@ fn create_recurring_task_impl(
     let id = format!("{}-{}", project_id, filename);
 
     let mut fm = serde_yaml::Mapping::new();
-    fm.insert(serde_yaml::Value::from("id"), serde_yaml::Value::from(id.clone()));
-    fm.insert(serde_yaml::Value::from("type"), serde_yaml::Value::from("task"));
-    fm.insert(serde_yaml::Value::from("title"), serde_yaml::Value::from(title));
-    fm.insert(serde_yaml::Value::from("completed"), serde_yaml::Value::from(false));
-    fm.insert(serde_yaml::Value::from("section"), serde_yaml::Value::from("Active"));
-    fm.insert(serde_yaml::Value::from("priority"), serde_yaml::Value::from("normal"));
-    fm.insert(serde_yaml::Value::from("is_active"), serde_yaml::Value::from(true));
-    fm.insert(serde_yaml::Value::from("project_id"), serde_yaml::Value::from(project_id));
-    fm.insert(serde_yaml::Value::from("recurrence"), serde_yaml::Value::from(recurrence));
-    fm.insert(serde_yaml::Value::from("recurrence_interval"), serde_yaml::Value::from(interval as u64));
+    fm.insert(
+        serde_yaml::Value::from("id"),
+        serde_yaml::Value::from(id.clone()),
+    );
+    fm.insert(
+        serde_yaml::Value::from("type"),
+        serde_yaml::Value::from("task"),
+    );
+    fm.insert(
+        serde_yaml::Value::from("title"),
+        serde_yaml::Value::from(title),
+    );
+    fm.insert(
+        serde_yaml::Value::from("completed"),
+        serde_yaml::Value::from(false),
+    );
+    fm.insert(
+        serde_yaml::Value::from("section"),
+        serde_yaml::Value::from("Active"),
+    );
+    fm.insert(
+        serde_yaml::Value::from("priority"),
+        serde_yaml::Value::from("normal"),
+    );
+    fm.insert(
+        serde_yaml::Value::from("is_active"),
+        serde_yaml::Value::from(true),
+    );
+    fm.insert(
+        serde_yaml::Value::from("project_id"),
+        serde_yaml::Value::from(project_id),
+    );
+    fm.insert(
+        serde_yaml::Value::from("recurrence"),
+        serde_yaml::Value::from(recurrence),
+    );
+    fm.insert(
+        serde_yaml::Value::from("recurrence_interval"),
+        serde_yaml::Value::from(interval as u64),
+    );
 
     if let Some(due) = due_date {
-        fm.insert(serde_yaml::Value::from("due_date"), serde_yaml::Value::from(due));
+        fm.insert(
+            serde_yaml::Value::from("due_date"),
+            serde_yaml::Value::from(due),
+        );
     }
 
     if !tags.is_empty() {
-        let yaml_tags: Vec<serde_yaml::Value> = tags.iter().map(|t| serde_yaml::Value::from(t.as_str())).collect();
-        fm.insert(serde_yaml::Value::from("tags"), serde_yaml::Value::Sequence(yaml_tags));
+        let yaml_tags: Vec<serde_yaml::Value> = tags
+            .iter()
+            .map(|t| serde_yaml::Value::from(t.as_str()))
+            .collect();
+        fm.insert(
+            serde_yaml::Value::from("tags"),
+            serde_yaml::Value::Sequence(yaml_tags),
+        );
     }
 
-    fm.insert(serde_yaml::Value::from("created"), serde_yaml::Value::from(now_str.clone()));
-    fm.insert(serde_yaml::Value::from("updated"), serde_yaml::Value::from(now_str.clone()));
+    fm.insert(
+        serde_yaml::Value::from("created"),
+        serde_yaml::Value::from(now_str.clone()),
+    );
+    fm.insert(
+        serde_yaml::Value::from("updated"),
+        serde_yaml::Value::from(now_str.clone()),
+    );
 
     let body = format!("# {}\n\n", title);
     let content = frontmatter::serialize_frontmatter(&fm, &body)?;
@@ -728,8 +766,12 @@ fn update_task_meta_impl(
     filesystem::atomic_write(&task_path, new_content.as_bytes())?;
 
     // Return updated task
-    let task = parse_task_file(&fs::read_to_string(&task_path).unwrap(), &task_path, project_id)
-        .ok_or_else(|| "Failed to parse updated task".to_string())?;
+    let task = parse_task_file(
+        &fs::read_to_string(&task_path).unwrap(),
+        &task_path,
+        project_id,
+    )
+    .ok_or_else(|| "Failed to parse updated task".to_string())?;
 
     Ok(task)
 }

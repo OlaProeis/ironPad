@@ -28,15 +28,19 @@ pub async fn start_watcher(ws_state: Arc<WsState>) -> Result<(), String> {
     // Watch the data directory
     let data_path = config::data_dir();
     if !data_path.exists() {
-        return Err(format!("Data directory does not exist: {}", data_path.display()));
+        return Err(format!(
+            "Data directory does not exist: {}",
+            data_path.display()
+        ));
     }
 
     // We need to keep the debouncer alive, so we'll store it
     let debouncer = Arc::new(tokio::sync::Mutex::new(debouncer));
-    
+
     {
         let mut d = debouncer.lock().await;
-        d.watcher().watch(data_path, RecursiveMode::Recursive)
+        d.watcher()
+            .watch(data_path, RecursiveMode::Recursive)
             .map_err(|e| format!("Failed to watch directory: {}", e))?;
     }
 
@@ -47,7 +51,7 @@ pub async fn start_watcher(ws_state: Arc<WsState>) -> Result<(), String> {
     tokio::spawn(async move {
         // Keep debouncer alive
         let _debouncer = debouncer;
-        
+
         while let Some(events) = rx.recv().await {
             for event in events {
                 process_event(&event, &ws_state_clone);
@@ -58,9 +62,9 @@ pub async fn start_watcher(ws_state: Arc<WsState>) -> Result<(), String> {
     Ok(())
 }
 
+use std::collections::HashMap;
 /// Track recent saves to avoid notifying about our own changes
 use std::sync::Mutex;
-use std::collections::HashMap;
 use std::time::Instant;
 
 lazy_static::lazy_static! {
@@ -113,19 +117,19 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
     }
 
     let path_str = normalize_path(&paths[0]);
-    
+
     // Check if this was a recent save by us (within last 2 seconds)
     if let Ok(mut saves) = RECENT_SAVES.lock() {
         // Clean up old entries
         saves.retain(|_, t| t.elapsed().as_secs() < 5);
-        
+
         if let Some(saved_at) = saves.get(&path_str) {
             if saved_at.elapsed().as_secs() < 2 {
                 return; // Skip - this was our own save
             }
         }
     }
-    
+
     let msg = match &event.kind {
         EventKind::Create(_) => {
             tracing::info!("External file created: {}", path_str);
@@ -150,12 +154,15 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
 /// Normalize path for client consumption
 fn normalize_path(path: &Path) -> String {
     let path_str = path.to_string_lossy();
-    
+
     // Find "data" in the path and strip everything before and including it
     if let Some(idx) = path_str.find("data") {
         let stripped = &path_str[idx + 5..]; // Skip "data" + separator
-        return stripped.replace('\\', "/").trim_start_matches('/').to_string();
+        return stripped
+            .replace('\\', "/")
+            .trim_start_matches('/')
+            .to_string();
     }
-    
+
     path_str.replace('\\', "/")
 }

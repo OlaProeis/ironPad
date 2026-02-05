@@ -31,10 +31,14 @@ pub fn init_data_dir() {
     }
 
     tracing::info!("Data directory: {}", path.display());
-    DATA_DIR.set(path).expect("Data directory already initialized");
+    DATA_DIR
+        .set(path)
+        .expect("Data directory already initialized");
 }
 
 /// Get the resolved data directory path.
 pub fn data_dir() -> &'static Path {
-    DATA_DIR.get().expect("Data directory not initialized. Call config::init_data_dir() first.")
+    DATA_DIR
+        .get()
+        .expect("Data directory not initialized. Call config::init_data_dir() first.")
 }

@@ -165,8 +165,14 @@ mod tests {
         let (fm, body, has_fm) = parse_frontmatter(content);
 
         assert!(has_fm);
-        assert_eq!(fm.get(&Value::from("id")).unwrap().as_str().unwrap(), "test");
-        assert_eq!(fm.get(&Value::from("title")).unwrap().as_str().unwrap(), "Test Note");
+        assert_eq!(
+            fm.get(&Value::from("id")).unwrap().as_str().unwrap(),
+            "test"
+        );
+        assert_eq!(
+            fm.get(&Value::from("title")).unwrap().as_str().unwrap(),
+            "Test Note"
+        );
         assert!(body.contains("Body content"));
     }
 
