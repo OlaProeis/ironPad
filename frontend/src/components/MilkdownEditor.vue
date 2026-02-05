@@ -3,10 +3,9 @@ import { ref, computed } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import { Crepe } from '@milkdown/crepe'
 import { useThemeStore } from '../stores'
-import { assetsApi } from '../api/client'
 import MilkdownEditorCore from './MilkdownEditorCore.vue'
 
-const props = defineProps<{
+defineProps<{
   modelValue: string
   readonly?: boolean
   placeholder?: string

@@ -62,7 +62,7 @@ function tryApplyPendingContent() {
   if (!crepe) return false
   
   try {
-    const editor = crepe.editor
+    const editor = (crepe as any).editor
     if (!editor || typeof editor.action !== 'function') return false
     
     console.log('[MilkdownEditorCore] Applying pending content, length:', pendingContent.value.length)
@@ -111,10 +111,10 @@ const { get, loading } = useEditor((root) => {
   })
 
   // Add listener plugin for content changes
-  crepe.editor
-    .config((ctx) => {
+  ;(crepe as any).editor
+    .config((ctx: any) => {
       const listenerHandler = ctx.get(listenerCtx)
-      listenerHandler.markdownUpdated((ctx, markdown, prevMarkdown) => {
+      listenerHandler.markdownUpdated((_ctx: any, markdown: string, prevMarkdown: string) => {
         // CRITICAL: Only emit content changes if:
         // 1. Content actually changed
         // 2. We're not in the middle of an external update
@@ -143,7 +143,7 @@ watch(loading, (isLoading) => {
   if (!isLoading) {
     const crepe = get()
     if (crepe) {
-      emit('editor-ready', crepe)
+      emit('editor-ready', crepe as Crepe)
       
       // Try to apply pending content - might need retries if editor not fully ready
       if (pendingContent.value !== null) {
