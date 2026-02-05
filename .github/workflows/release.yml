@@ -73,6 +73,7 @@ jobs:
           RELEASE_DIR="${{ matrix.asset_name }}-${{ github.ref_name }}"
           mkdir -p "$RELEASE_DIR"
           cp "backend/target/${{ matrix.target }}/release/ironpad" "$RELEASE_DIR/"
+          cp -r backend/static "$RELEASE_DIR/static"
           cp README.md LICENSE "$RELEASE_DIR/"
           tar czf "$RELEASE_DIR.tar.gz" "$RELEASE_DIR"
           echo "ASSET=$RELEASE_DIR.tar.gz" >> $GITHUB_ENV
@@ -84,6 +85,7 @@ jobs:
           RELEASE_DIR="${{ matrix.asset_name }}-${{ github.ref_name }}"
           mkdir -p "$RELEASE_DIR"
           cp "backend/target/${{ matrix.target }}/release/ironpad.exe" "$RELEASE_DIR/"
+          cp -r backend/static "$RELEASE_DIR/static"
           cp README.md LICENSE "$RELEASE_DIR/"
           7z a "$RELEASE_DIR.zip" "$RELEASE_DIR"
           echo "ASSET=$RELEASE_DIR.zip" >> $GITHUB_ENV

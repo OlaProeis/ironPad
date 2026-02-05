@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 
 use axum::{routing::get, Router};
@@ -95,14 +94,19 @@ async fn main() {
         .layer(cors);
 
     // Check for embedded frontend (production mode)
-    let static_dir = Path::new("static");
-    let has_frontend = static_dir.join("index.html").exists();
+    // Resolve relative to the executable's directory, not the working directory
+    let has_frontend = config::is_production();
 
     if has_frontend {
-        // Production mode: serve frontend from static/ and use SPA fallback
-        info!("Production mode: serving frontend from static/");
-        let serve_dir = ServeDir::new("static")
-            .fallback(tower_http::services::ServeFile::new("static/index.html"));
+        // Production mode: serve frontend from static/ next to the exe
+        let static_path = config::exe_dir().join("static");
+        let index_path = static_path.join("index.html");
+        info!(
+            "Production mode: serving frontend from {}",
+            static_path.display()
+        );
+        let serve_dir =
+            ServeDir::new(&static_path).fallback(tower_http::services::ServeFile::new(index_path));
         app = app.fallback_service(serve_dir);
     } else {
         // Development mode: API-only
