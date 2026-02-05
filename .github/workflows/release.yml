@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy frontend to static
+        shell: bash
+        run: |
+          mkdir -p backend/static
+          cp -r frontend/dist/* backend/static/
+
+      - name: Build backend (release)
+        working-directory: backend
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          BINARY_NAME="ironpad"
+          RELEASE_DIR="ironpad-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir -p "$RELEASE_DIR"
+          cp "backend/target/${{ matrix.target }}/release/$BINARY_NAME" "$RELEASE_DIR/"
+          cp README.md LICENSE "$RELEASE_DIR/"
+          tar czf "$RELEASE_DIR.tar.gz" "$RELEASE_DIR"
+          echo "ASSET=$RELEASE_DIR.tar.gz" >> $GITHUB_ENV
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          BINARY_NAME="ironpad.exe"
+          RELEASE_DIR="ironpad-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir -p "$RELEASE_DIR"
+          cp "backend/target/${{ matrix.target }}/release/$BINARY_NAME" "$RELEASE_DIR/"
+          cp README.md LICENSE "$RELEASE_DIR/"
+          7z a "$RELEASE_DIR.zip" "$RELEASE_DIR"
+          echo "ASSET=$RELEASE_DIR.zip" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ironpad-${{ matrix.target }}
+          path: ${{ env.ASSET }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

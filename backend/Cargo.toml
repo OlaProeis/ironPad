@@ -1,0 +1,49 @@
+[package]
+name = "ironpad"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "normalize-path", "fs"] }
+
+# Browser opening (production mode)
+webbrowser = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Markdown parsing (CommonMark)
+markdown = "1.0.0-alpha.22"
+
+# Git operations
+git2 = "0.19"
+
+
+# File system watching
+notify = "6.1"
+notify-debouncer-full = "0.3"
+
+# Search (ripgrep internals)
+grep = "0.3"
+walkdir = "2.4"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# WebSocket support
+futures-util = "0.3"
+uuid = { version = "1.0", features = ["v4"] }
+
+# Utilities
+lazy_static = "1.4"
+tokio-util = { version = "0.7", features = ["io"] }

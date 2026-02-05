@@ -1,0 +1,45 @@
+# === OS ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# === Editors / IDEs ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === Rust ===
+backend/target/
+
+# === Node.js ===
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# === Build artifacts ===
+backend/static/
+*.tmp
+
+# === User data (created at runtime) ===
+# The data/ directory is the user's local database.
+# We include only the skeleton structure (.gitkeep files),
+# not the actual notes, projects, tasks, or daily notes.
+data/.git/
+data/.gitignore
+data/inbox.md
+data/index.md
+data/archive/*.md
+data/daily/*.md
+data/notes/*.md
+data/notes/assets/*
+!data/notes/assets/.gitkeep
+data/projects/*/
+!data/projects/.gitkeep
+
+# === Stray root lock file (frontend/package-lock.json is kept for CI) ===
+/package-lock.json
+
+# === Generated images (article assets, not source) ===
+/assets/
