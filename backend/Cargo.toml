@@ -21,8 +21,8 @@ serde_yaml = "0.9"
 # Markdown parsing (CommonMark)
 markdown = "1.0.0-alpha.22"
 
-# Git operations
-git2 = "0.19"
+# Git operations (vendored-openssl for cross-platform CI builds)
+git2 = { version = "0.19", features = ["vendored-openssl"] }
 
 
 # File system watching
