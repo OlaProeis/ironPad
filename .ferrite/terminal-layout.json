@@ -1,0 +1,20 @@
+{
+  "name": "Workspace",
+  "tabs": [
+    {
+      "name": "Tab 1",
+      "layout": {
+        "Terminal": 1
+      },
+      "terminals": {
+        "1": {
+          "shell": "Default",
+          "cwd": "G:\\DEV\\proman2k",
+          "title": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        }
+      }
+    }
+  ],
+  "floating_windows": [],
+  "active_tab_index": 0
+}

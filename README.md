@@ -1,5 +1,7 @@
 # Ironpad
 
+![Ironpad Banner](docs/graphics/ironpad-banner.png)
+
 **A local-first, file-based project & knowledge management system.**
 
 ![Build](https://github.com/OlaProeis/ironPad/actions/workflows/release.yml/badge.svg)
@@ -65,6 +67,8 @@ Open http://localhost:5173 in your browser.
 
 ## Tech Stack
 
+![Tech Stack](docs/graphics/tech-stack.png)
+
 | Component | Technology |
 |-----------|------------|
 | Backend | Rust, Axum 0.8, Tokio |
@@ -77,6 +81,8 @@ Open http://localhost:5173 in your browser.
 | Search | ripgrep |
 
 ## Roadmap
+
+![Roadmap](docs/graphics/roadmap.png)
 
 Ironpad is under active development. Here's what's planned:
 
@@ -93,6 +99,8 @@ Ironpad is under active development. Here's what's planned:
 See [CHECKLIST.md](docs/ai-workflow/CHECKLIST.md) for detailed implementation status.
 
 ## Built With AI
+
+![AI Workflow](docs/graphics/ai-workflow.png)
 
 This entire application was built using AI-assisted development -- an approach we call **Open Method**. We share not just the code, but the complete process: the PRD, task breakdowns, handover documents, and workflow artifacts.
 
@@ -112,6 +120,8 @@ Read about the method:
 | Auto-save | 1 second debounce | Frontend saves after typing stops |
 
 ## Documentation
+
+![Architecture](docs/graphics/architecture.png)
 
 | Document | Description |
 |----------|-------------|

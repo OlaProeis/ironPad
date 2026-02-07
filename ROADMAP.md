@@ -18,6 +18,12 @@
   - **Monthly** — show on the day-of-month if set, else treat as “floating”
 - Requires frontend logic to compute occurrences from `recurrence`, `recurrence_interval`, and optionally `due_date` / `created`
 
+#### 3. System tray mode
+- **Replace CMD window** with a system tray icon (Windows, macOS, Linux)
+- Tray menu: **Open in Browser** | **Quit**
+- No console window on Windows in release builds
+- Implementation doc: [docs/system-tray-implementation.md](docs/system-tray-implementation.md)
+
 ---
 
 ## Suggested features (future releases)
@@ -53,4 +59,4 @@ Ideas that fit the current architecture and local-first design:
 | Version | Status  | Notes                                              |
 |---------|---------|----------------------------------------------------|
 | 0.1.0   | Current | First public release, core features in place       |
-| 0.2.0   | Planned | Comments, recurring tasks on calendar              |
+| 0.2.0   | Planned | Comments, recurring tasks on calendar, system tray |
