@@ -51,6 +51,10 @@ tokio-util = { version = "0.7", features = ["io"] }
 # System tray (production mode)
 tray-item = "0.10"
 
+# Linux: tray-item needs ksni feature (pure-Rust D-Bus StatusNotifierItem)
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-item = { version = "0.10", features = ["ksni"] }
+
 # Windows icon loading (for tray icon)
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
