@@ -41,5 +41,8 @@ data/projects/*/
 # === Stray root lock file (frontend/package-lock.json is kept for CI) ===
 /package-lock.json
 
+# === Local build output ===
+release/
+
 # === Generated images (article assets, not source) ===
 /assets/

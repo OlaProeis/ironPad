@@ -267,7 +267,12 @@ GET /api/projects/:id/tasks
     "priority": "high",
     "due_date": "2026-02-10",
     "is_active": true,
-    "content": "## Requirements\n\n- Item 1\n- Item 2",
+    "tags": ["backend", "api"],
+    "parent_id": null,
+    "recurrence": null,
+    "recurrence_interval": null,
+    "project_id": "ferrite",
+    "last_comment": "API endpoint done, moving to frontend",
     "path": "projects/ferrite/tasks/task-20260205-123456.md",
     "created": "2026-02-05T12:34:56Z",
     "updated": "2026-02-05T12:34:56Z"
@@ -336,6 +341,72 @@ PUT /api/projects/:id/tasks/:taskId/toggle
 
 ```http
 DELETE /api/projects/:id/tasks/:taskId
+```
+
+### Add Comment
+
+```http
+POST /api/projects/:id/tasks/:taskId/comments
+Content-Type: application/json
+
+{
+  "text": "Started work on this — API integration is in progress."
+}
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": "task-20260216-120000",
+  "title": "Implement feature X",
+  "completed": false,
+  "section": "Active",
+  "is_active": true,
+  "comments": [
+    {
+      "date": "2026-02-16T10:30:00+00:00",
+      "text": "Created initial spec"
+    },
+    {
+      "date": "2026-02-16T12:00:00+00:00",
+      "text": "Started work on this — API integration is in progress."
+    }
+  ],
+  "content": "## Requirements\n\n- Item 1\n- Item 2",
+  "...": "other task fields"
+}
+```
+
+Comments are stored as a YAML sequence in the task's frontmatter. The response returns the full `TaskWithContent` object with all comments.
+
+### Delete Comment
+
+```http
+DELETE /api/projects/:id/tasks/:taskId/comments/:commentIndex
+```
+
+Removes the comment at the given zero-based index.
+
+**Response:**
+```json
+{
+  "id": "task-20260216-120000",
+  "comments": [],
+  "...": "full TaskWithContent"
+}
+```
+
+### Comment in List Views
+
+When listing tasks (`GET /api/projects/:id/tasks` or `GET /api/tasks`), each task includes a `last_comment` field with the text of the most recent comment (or `null` if no comments exist). This enables showing a quick status summary without loading the full task.
+
+```json
+{
+  "id": "task-20260216-120000",
+  "title": "Implement feature X",
+  "last_comment": "Started work on this — API integration is in progress.",
+  "...": "other task fields"
+}
 ```
 
 ---

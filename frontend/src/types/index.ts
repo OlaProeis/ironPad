@@ -40,6 +40,11 @@ export interface ProjectNoteWithContent extends ProjectNote {
   content: string
 }
 
+export interface Comment {
+  date: string
+  text: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -56,10 +61,12 @@ export interface Task {
   path: string
   created: string
   updated: string
+  last_comment?: string
 }
 
 export interface TaskWithContent extends Task {
   content: string
+  comments: Comment[]
 }
 
 export interface SearchResult {

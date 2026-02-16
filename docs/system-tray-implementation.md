@@ -1,4 +1,6 @@
-# System Tray Implementation (v0.2.0)
+# System Tray Implementation (v0.2.0) ✅
+
+**Status:** Implemented
 
 **Goal:** Replace the CMD window with a system tray icon. Users interact via tray menu: "Open in Browser" or "Quit". No console window on Windows.
 
@@ -6,100 +8,101 @@
 
 ## Overview
 
-- **Scope:** Single codebase, cross-platform. CI/CD unchanged—same build pipeline produces one binary per OS.
-- **Complexity:** Low–medium. Uses a cross-platform Rust crate; platform-specific code is minimal.
+- **Scope:** Single codebase, cross-platform. CI/CD unchanged — same build pipeline produces one binary per OS.
+- **Crate:** `tray-item = "0.10"` (cross-platform tray icon with simple API)
+- **Windows icon:** `windows-sys = "0.52"` for loading the standard application icon via `LoadIconW`
 
 ---
 
-## Implementation Steps
+## What Was Implemented
 
-### 1. Add Tray Crate Dependency
-
-Add to `backend/Cargo.toml`:
+### 1. Dependencies (`backend/Cargo.toml`)
 
 ```toml
 # System tray (production mode)
 tray-item = "0.10"
+
+# Windows system icon loading (for tray icon)
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging"] }
 ```
 
-Alternative: `tray-icon` (more features, heavier; requires event loop integration).
-
-### 2. Windows: Hide Console Window
-
-Add near the top of `backend/src/main.rs` (after `mod` declarations if any, before `fn main`):
+### 2. Windows: Hide Console Window (`backend/src/main.rs`)
 
 ```rust
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 ```
 
-- **Debug builds:** Console remains (for logs).
-- **Release builds:** No CMD window on Windows.
+- **Debug builds (`cargo run`):** Console remains for logs.
+- **Release builds (`cargo build --release`):** No CMD window on Windows.
 
-### 3. Remove Auto-Open Browser on Startup
+### 3. Restructured `main()` for Dual-Mode Operation
 
-In `main.rs`, remove or conditionally disable the auto-open logic (the `tokio::spawn` block that calls `webbrowser::open()`). The user will open the browser from the tray menu instead.
-
-### 4. Add Tray Icon and Menu (Production Mode Only)
-
-When `has_frontend` is true (production mode):
-
-1. Create tray icon with an appropriate icon (or placeholder).
-2. Add menu items:
-   - **"Open in Browser"** — calls `webbrowser::open()` with `http://localhost:{port}`.
-   - **"Quit"** — shuts down the server and exits the process.
-
-### 5. Threading Considerations
-
-- **macOS:** Some tray crates expect event handling on the main thread. May need to run tray logic on main thread and spawn the Axum server on a background thread, or use crate-specific patterns.
-- **Windows/Linux:** Usually more flexible; verify with the chosen crate’s docs.
-
-### 6. CI/CD Changes (If Needed)
-
-Current `release.yml` builds for Windows, macOS, and Linux. Likely no changes required.
-
-If using a crate that needs GTK on Linux (e.g. `tray-icon`), add to the "Install system dependencies (Linux)" step:
-
-```yaml
-sudo apt-get install -y cmake libgtk-3-dev libappindicator3-dev
+```
+main()
+├── Development mode (no static/index.html next to exe)
+│   └── Normal tokio runtime on main thread, API-only, no tray
+└── Production mode (static/index.html exists)
+    └── run_with_tray()
+        ├── Background thread: tokio runtime + Axum server
+        ├── mpsc channel: server sends bound port back to main thread
+        ├── Auto-open browser (400ms delay)
+        └── Main thread: tray icon + event loop
 ```
 
-Note: Linux users would then need GTK installed at runtime. For `tray-item`, check whether it has different Linux deps.
+### 4. Tray Icon (Platform-Specific)
+
+| Platform | Icon Source |
+|----------|------------|
+| Windows  | `IDI_APPLICATION` via `LoadIconW` (standard system app icon) |
+| macOS    | `IconSource::Resource("")` (default icon) |
+| Linux    | `IconSource::Resource("application-x-executable")` (icon theme) |
+
+### 5. Tray Menu
+
+- **"Open in Browser"** — calls `webbrowser::open()` with `http://localhost:{port}`
+- **"Quit"** — calls `std::process::exit(0)` to shut down server and exit
+
+### 6. Threading Model
+
+The tray event loop runs on the **main thread** (required on macOS, safe on all platforms). The Axum server runs on a **background thread** with its own `tokio::runtime::Runtime`. Port discovery uses `std::sync::mpsc::channel`.
 
 ---
 
 ## Behaviour Summary
 
-| Before (v0.1.0)        | After (v0.2.0)                 |
-|------------------------|--------------------------------|
-| CMD window visible     | No console window (Windows)    |
-| Browser opens on start | Browser opens via tray menu    |
-| Quit via Ctrl+C        | Quit via tray menu             |
+| Before (v0.1.0)        | After (v0.2.0)                     |
+|------------------------|------------------------------------|
+| CMD window visible     | No console window (Windows release)|
+| Browser opens on start | Browser opens on start + via tray  |
+| Quit via Ctrl+C        | Quit via tray menu or Ctrl+C (dev) |
 
 ---
 
 ## Testing Checklist
 
-- [ ] Windows: No CMD window when running release binary.
-- [ ] Windows: Tray icon appears; "Open in Browser" opens correct URL.
-- [ ] Windows: "Quit" exits cleanly.
-- [ ] macOS: Tray icon in menu bar; menu works.
-- [ ] Linux: Tray icon in system tray; menu works.
-- [ ] Development mode (`cargo run`): Behaviour unchanged (no tray, API-only).
+- [x] Backend compiles with new dependencies (`cargo check`)
+- [ ] Windows: No CMD window when running release binary
+- [ ] Windows: Tray icon appears; "Open in Browser" opens correct URL
+- [ ] Windows: "Quit" exits cleanly
+- [ ] macOS: Tray icon in menu bar; menu works
+- [ ] Linux: Tray icon in system tray; menu works
+- [ ] Development mode (`cargo run`): Behaviour unchanged (no tray, API-only)
 
 ---
 
 ## Icon Asset
 
-You’ll need a tray icon (e.g. 16×16 or 32×32 PNG). Options:
+Currently using platform default icons (Windows system app icon, macOS default, Linux icon theme). To use a custom branded icon:
 
-- Extract from existing branding/logo.
-- Use a simple placeholder (e.g. filled circle) for initial implementation.
-- Store in `backend/` or `backend/static/` and load at runtime.
+1. Create a 16×16 or 32×32 PNG/ICO
+2. On Windows: embed via `.rc` resource file and `build.rs`, use `IconSource::Resource("icon-name")`
+3. On macOS/Linux: use `IconSource::Data { width, height, data }` with raw RGBA bytes
 
 ---
 
 ## References
 
 - [tray-item crate](https://crates.io/crates/tray-item)
-- [tray-icon crate](https://crates.io/crates/tray-icon) (alternative)
-- `#![windows_subsystem = "windows"]` — [Rust embed documentation](https://doc.rust-lang.org/reference/conditional-compilation.html#windows_subsystem)
+- [tray-icon crate](https://crates.io/crates/tray-icon) (alternative, heavier)
+- `#![windows_subsystem = "windows"]` — [Rust conditional compilation](https://doc.rust-lang.org/reference/conditional-compilation.html#windows_subsystem)

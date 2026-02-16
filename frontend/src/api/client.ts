@@ -15,7 +15,8 @@ import type {
   CommitDetail,
   DiffInfo,
   RemoteInfo,
-  DailyNote 
+  DailyNote,
+  Comment
 } from '../types'
 
 const API_BASE = '/api'
@@ -150,6 +151,20 @@ export const tasksApi = {
   delete: (projectId: string, taskId: string) =>
     request<void>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`, { 
       method: 'DELETE' 
+    }),
+
+  // Add a comment to a task
+  addComment: (projectId: string, taskId: string, text: string) =>
+    request<TaskWithContent>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    }),
+
+  // Delete a comment from a task by index
+  deleteComment: (projectId: string, taskId: string, commentIndex: number) =>
+    request<TaskWithContent>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments/${commentIndex}`, {
+      method: 'DELETE'
     })
 }
 

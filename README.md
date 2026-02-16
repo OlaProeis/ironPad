@@ -8,13 +8,13 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)
-![Version](https://img.shields.io/badge/version-0.1.0-green)
+![Version](https://img.shields.io/badge/version-0.2.0-green)
 
 Ironpad stores all your notes, projects, and tasks as plain Markdown files. No cloud services, no vendor lock-in -- your data stays on your machine in a format you can read and edit with any text editor. Every change is automatically versioned with Git.
 
 ![Ironpad Screenshot](docs/screenshot.jpg)
 
-> **v0.1.0 -- Early Release.** This is the first public release. It's functional and we use it daily, but expect rough edges. Bug reports and feature requests are welcome via [Issues](https://github.com/OlaProeis/ironPad/issues).
+> **v0.2.0** -- Task comments, recurring tasks on calendar, system tray mode, and app branding. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ---
 
@@ -24,14 +24,15 @@ Ironpad stores all your notes, projects, and tasks as plain Markdown files. No c
 - **Local-first** -- Works fully offline, no internet required
 - **Git integration** -- Automatic version control with 60-second commit batching, full diff viewer, push/fetch
 - **WYSIWYG editing** -- Milkdown editor with real-time markdown rendering and formatting toolbar
-- **Project management** -- Organize tasks and notes by project with due dates, tags, subtasks, and recurrence
-- **Calendar view** -- Month grid showing tasks by due date with color-coded urgency
+- **Project management** -- Organize tasks and notes by project with due dates, tags, subtasks, recurrence, and comments
+- **Calendar view** -- Month grid showing tasks by due date with color-coded urgency; recurring tasks automatically expanded across the month
 - **Dashboard** -- Cross-project overview with active task summaries
 - **Daily notes** -- Quick capture with templates for daily journaling
 - **Real-time sync** -- WebSocket-based live updates; edit in VS Code, see changes in the browser instantly
 - **External editing** -- Full support for VS Code, Obsidian, Vim, or any text editor
 - **Search** -- ripgrep-powered full-text search across all files (Ctrl+K)
 - **Dark theme** -- Beautiful dark UI by default with light mode toggle
+- **System tray** -- Runs quietly in the system tray (Windows, macOS, Linux); no console window in release builds
 - **Tiny footprint** -- 5 MB binary, ~20 MB RAM, sub-second startup
 
 ## Quick Start
@@ -86,6 +87,9 @@ Open http://localhost:5173 in your browser.
 
 Ironpad is under active development. Here's what's planned:
 
+- [x] Task comments and activity summary
+- [x] Recurring tasks on calendar (daily/weekly/monthly/yearly expansion)
+- [x] System tray mode (Windows, macOS, Linux)
 - [ ] UI polish and animations
 - [ ] Tag extraction and filtering across projects
 - [ ] Backlinks between notes
@@ -93,7 +97,6 @@ Ironpad is under active development. Here's what's planned:
 - [ ] Export to PDF / HTML
 - [ ] Custom themes
 - [ ] Global hotkey (Ctrl+Shift+Space)
-- [ ] System tray mode
 - [ ] Kanban board view for tasks
 
 See [CHECKLIST.md](docs/ai-workflow/CHECKLIST.md) for detailed implementation status.

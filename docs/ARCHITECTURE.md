@@ -320,6 +320,11 @@ interface Project {
 ### Task
 
 ```typescript
+interface Comment {
+  date: string         // ISO 8601 timestamp
+  text: string         // Comment body
+}
+
 interface Task {
   id: string           // e.g., "task-20260205-123456"
   title: string
@@ -328,12 +333,51 @@ interface Task {
   priority?: string
   due_date?: string
   is_active: boolean
-  content: string      // Markdown description
+  tags: string[]
+  parent_id?: string   // Links subtask to parent
+  recurrence?: string  // "daily" | "weekly" | "monthly" | "yearly"
+  recurrence_interval?: number
+  last_comment?: string // Most recent comment text (list views)
   path: string
   created: string
   updated: string
 }
+
+interface TaskWithContent extends Task {
+  content: string      // Markdown description
+  comments: Comment[]  // Full comment history
+}
 ```
+
+#### Task File Format
+
+```markdown
+---
+id: ferrite-task-20260216-120000
+type: task
+title: Implement feature X
+completed: false
+section: Active
+priority: normal
+is_active: true
+tags:
+  - backend
+  - api
+comments:
+  - date: "2026-02-16T10:30:00+00:00"
+    text: Started initial research
+  - date: "2026-02-16T14:00:00+00:00"
+    text: API endpoint done, moving to frontend
+created: "2026-02-16T12:00:00+00:00"
+updated: "2026-02-16T14:00:00+00:00"
+---
+
+# Implement feature X
+
+Detailed description in markdown...
+```
+
+Comments are stored as a YAML sequence directly in frontmatter, keeping everything in a single file. The `last_comment` field in list views is derived at read time from the last entry in the sequence.
 
 ## API Design
 

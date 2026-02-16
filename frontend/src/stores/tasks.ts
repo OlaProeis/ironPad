@@ -181,6 +181,42 @@ export const useTasksStore = defineStore('tasks', () => {
     }
   }
 
+  async function addComment(projectId: string, taskId: string, text: string) {
+    try {
+      error.value = null
+      const task = await tasksApi.addComment(projectId, taskId, text)
+      selectedTask.value = task
+
+      // Refresh task list so last_comment updates
+      if (currentProjectId.value === projectId) {
+        await loadProjectTasks(projectId)
+      }
+
+      return task
+    } catch (err) {
+      error.value = `Failed to add comment: ${err}`
+      throw err
+    }
+  }
+
+  async function deleteComment(projectId: string, taskId: string, commentIndex: number) {
+    try {
+      error.value = null
+      const task = await tasksApi.deleteComment(projectId, taskId, commentIndex)
+      selectedTask.value = task
+
+      // Refresh task list so last_comment updates
+      if (currentProjectId.value === projectId) {
+        await loadProjectTasks(projectId)
+      }
+
+      return task
+    } catch (err) {
+      error.value = `Failed to delete comment: ${err}`
+      throw err
+    }
+  }
+
   function selectTask(task: Task | null) {
     if (task && currentProjectId.value) {
       loadTask(currentProjectId.value, task.id)
@@ -227,6 +263,8 @@ export const useTasksStore = defineStore('tasks', () => {
     toggleTask,
     updateTaskMeta,
     deleteTask,
+    addComment,
+    deleteComment,
     selectTask,
     clearSelectedTask,
     clearProjectTasks,

@@ -7,6 +7,13 @@ use crate::config;
 use crate::services::filesystem;
 use crate::services::frontmatter;
 
+/// A single comment entry on a task
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Comment {
+    pub date: String,
+    pub text: String,
+}
+
 /// Task summary for list views
 #[derive(Debug, Clone, Serialize)]
 pub struct Task {
@@ -25,6 +32,7 @@ pub struct Task {
     pub path: String,
     pub created: String,
     pub updated: String,
+    pub last_comment: Option<String>,
 }
 
 /// Task with full content for detail view
@@ -46,6 +54,7 @@ pub struct TaskWithContent {
     pub created: String,
     pub updated: String,
     pub content: String,
+    pub comments: Vec<Comment>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,6 +74,11 @@ pub struct UpdateTaskMetaRequest {
     pub tags: Option<Vec<String>>,
     pub recurrence: Option<String>,
     pub recurrence_interval: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddCommentRequest {
+    pub text: String,
 }
 
 pub fn router() -> Router {
@@ -178,6 +192,43 @@ pub async fn delete_task_handler(project_id: String, task_id: String) -> impl In
     }
 }
 
+/// Add a comment to a task
+pub async fn add_comment_handler(
+    project_id: String,
+    task_id: String,
+    payload: AddCommentRequest,
+) -> impl IntoResponse {
+    match add_comment_impl(&project_id, &task_id, &payload.text) {
+        Ok(task) => (StatusCode::CREATED, Json(task)).into_response(),
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to add comment: {}", err),
+        )
+            .into_response(),
+    }
+}
+
+/// Delete a comment from a task by index
+pub async fn delete_comment_handler(
+    project_id: String,
+    task_id: String,
+    comment_index: usize,
+) -> impl IntoResponse {
+    match delete_comment_impl(&project_id, &task_id, comment_index) {
+        Ok(task) => Json(task).into_response(),
+        Err(err) if err.contains("not found") => (StatusCode::NOT_FOUND, err).into_response(),
+        Err(err) if err.contains("out of range") => {
+            (StatusCode::BAD_REQUEST, err).into_response()
+        }
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete comment: {}", err),
+        )
+            .into_response(),
+    }
+}
+
 // ============ Implementation Functions ============
 
 fn get_tasks_dir(project_id: &str) -> std::path::PathBuf {
@@ -233,6 +284,29 @@ fn list_project_tasks_impl(project_id: &str) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
+/// Parse comments from frontmatter YAML sequence.
+fn parse_comments(fm: &serde_yaml::Mapping) -> Vec<Comment> {
+    fm.get(&serde_yaml::Value::from("comments"))
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|item| {
+                    let map = item.as_mapping()?;
+                    let date = map
+                        .get(&serde_yaml::Value::from("date"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)?;
+                    let text = map
+                        .get(&serde_yaml::Value::from("text"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)?;
+                    Some(Comment { date, text })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Shared helper: extract common task fields from frontmatter.
 /// Eliminates duplication between parse_task_file and parse_task_with_content.
 fn extract_task_fields(fm: &serde_yaml::Mapping, path: &StdPath, project_id: &str) -> Task {
@@ -241,6 +315,9 @@ fn extract_task_fields(fm: &serde_yaml::Mapping, path: &StdPath, project_id: &st
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
+
+    let comments = parse_comments(fm);
+    let last_comment = comments.last().map(|c| c.text.clone());
 
     Task {
         id: frontmatter::get_str_or(fm, "id", &filename),
@@ -258,6 +335,7 @@ fn extract_task_fields(fm: &serde_yaml::Mapping, path: &StdPath, project_id: &st
         path: format!("projects/{}/tasks/{}.md", project_id, filename),
         created: frontmatter::get_str_or(fm, "created", ""),
         updated: frontmatter::get_str_or(fm, "updated", ""),
+        last_comment,
     }
 }
 
@@ -355,6 +433,7 @@ fn create_task_impl(
         created: now_str.clone(),
         updated: now_str,
         content: body,
+        comments: Vec::new(),
     })
 }
 
@@ -407,6 +486,7 @@ fn parse_task_with_content(
     project_id: &str,
 ) -> Result<TaskWithContent, String> {
     let task = extract_task_fields(fm, path, project_id);
+    let comments = parse_comments(fm);
     Ok(TaskWithContent {
         id: task.id,
         title: task.title,
@@ -424,6 +504,7 @@ fn parse_task_with_content(
         created: task.created,
         updated: task.updated,
         content: body.to_string(),
+        comments,
     })
 }
 
@@ -683,6 +764,7 @@ fn create_recurring_task_impl(
         created: now_str.clone(),
         updated: now_str,
         content: body,
+        comments: Vec::new(),
     })
 }
 
@@ -774,6 +856,102 @@ fn update_task_meta_impl(
     .ok_or_else(|| "Failed to parse updated task".to_string())?;
 
     Ok(task)
+}
+
+/// Serialize a Vec<Comment> into a YAML sequence Value.
+fn comments_to_yaml(comments: &[Comment]) -> serde_yaml::Value {
+    let seq: Vec<serde_yaml::Value> = comments
+        .iter()
+        .map(|c| {
+            let mut map = serde_yaml::Mapping::new();
+            map.insert(
+                serde_yaml::Value::from("date"),
+                serde_yaml::Value::from(c.date.as_str()),
+            );
+            map.insert(
+                serde_yaml::Value::from("text"),
+                serde_yaml::Value::from(c.text.as_str()),
+            );
+            serde_yaml::Value::Mapping(map)
+        })
+        .collect();
+    serde_yaml::Value::Sequence(seq)
+}
+
+fn add_comment_impl(
+    project_id: &str,
+    task_id: &str,
+    text: &str,
+) -> Result<TaskWithContent, String> {
+    let task_path = find_task_path(project_id, task_id)?;
+
+    let existing = fs::read_to_string(&task_path).map_err(|e| e.to_string())?;
+    let (mut fm, body, _) = frontmatter::parse_frontmatter(&existing);
+
+    // Parse existing comments and append the new one
+    let mut comments = parse_comments(&fm);
+    let now = chrono::Utc::now().to_rfc3339();
+    comments.push(Comment {
+        date: now.clone(),
+        text: text.to_string(),
+    });
+
+    // Write comments back to frontmatter
+    fm.insert(
+        serde_yaml::Value::from("comments"),
+        comments_to_yaml(&comments),
+    );
+
+    // Update timestamp
+    fm.insert(
+        serde_yaml::Value::from("updated"),
+        serde_yaml::Value::from(now),
+    );
+
+    let new_content = frontmatter::serialize_frontmatter(&fm, &body)?;
+    filesystem::atomic_write(&task_path, new_content.as_bytes())?;
+
+    parse_task_with_content(&fm, &body, &task_path, project_id)
+}
+
+fn delete_comment_impl(
+    project_id: &str,
+    task_id: &str,
+    comment_index: usize,
+) -> Result<TaskWithContent, String> {
+    let task_path = find_task_path(project_id, task_id)?;
+
+    let existing = fs::read_to_string(&task_path).map_err(|e| e.to_string())?;
+    let (mut fm, body, _) = frontmatter::parse_frontmatter(&existing);
+
+    let mut comments = parse_comments(&fm);
+    if comment_index >= comments.len() {
+        return Err("Comment index out of range".to_string());
+    }
+
+    comments.remove(comment_index);
+
+    // Write comments back (or remove key if empty)
+    if comments.is_empty() {
+        fm.remove(&serde_yaml::Value::from("comments"));
+    } else {
+        fm.insert(
+            serde_yaml::Value::from("comments"),
+            comments_to_yaml(&comments),
+        );
+    }
+
+    // Update timestamp
+    let now = chrono::Utc::now().to_rfc3339();
+    fm.insert(
+        serde_yaml::Value::from("updated"),
+        serde_yaml::Value::from(now),
+    );
+
+    let new_content = frontmatter::serialize_frontmatter(&fm, &body)?;
+    filesystem::atomic_write(&task_path, new_content.as_bytes())?;
+
+    parse_task_with_content(&fm, &body, &task_path, project_id)
 }
 
 fn delete_task_impl(project_id: &str, task_id: &str) -> Result<(), String> {

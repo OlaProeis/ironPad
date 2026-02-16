@@ -338,6 +338,59 @@ async function addSubtask() {
   }
 }
 
+// ============ Comment Management ============
+
+const newCommentText = ref('')
+const showCommentForm = ref(false)
+
+function openCommentForm() {
+  showCommentForm.value = true
+  newCommentText.value = ''
+}
+
+function closeCommentForm() {
+  showCommentForm.value = false
+  newCommentText.value = ''
+}
+
+async function addComment() {
+  if (!newCommentText.value.trim() || !tasksStore.selectedTask) return
+  try {
+    await tasksStore.addComment(projectId.value, tasksStore.selectedTask.id, newCommentText.value.trim())
+    closeCommentForm()
+  } catch {
+    // Error handled in store
+  }
+}
+
+async function deleteComment(index: number) {
+  if (!tasksStore.selectedTask) return
+  try {
+    await tasksStore.deleteComment(projectId.value, tasksStore.selectedTask.id, index)
+  } catch {
+    // Error handled in store
+  }
+}
+
+function formatCommentDate(dateStr: string): string {
+  try {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+    return date.toLocaleDateString()
+  } catch {
+    return dateStr
+  }
+}
+
 // ============ Due Date Management ============
 
 async function setDueDate(date: string) {
@@ -650,6 +703,9 @@ onUnmounted(() => {
                         {{ formatDueDate(task.due_date)?.text }}
                       </span>
                     </div>
+                    <div v-if="task.last_comment" class="task-last-comment">
+                      {{ task.last_comment }}
+                    </div>
                   </div>
                 </template>
                 <button 
@@ -717,6 +773,9 @@ onUnmounted(() => {
                       >
                         {{ formatDueDate(task.due_date)?.text }}
                       </span>
+                    </div>
+                    <div v-if="task.last_comment" class="task-last-comment">
+                      {{ task.last_comment }}
                     </div>
                   </div>
                 </template>
@@ -919,6 +978,49 @@ onUnmounted(() => {
         </div>
         <div v-else class="subtask-add-bar">
           <button class="tag-add-btn" @click="openSubtaskInput">+ Add subtask</button>
+        </div>
+
+        <!-- Comments Section -->
+        <div class="comments-panel">
+          <div class="comments-header">
+            <span class="comments-label">Comments ({{ tasksStore.selectedTask.comments?.length || 0 }})</span>
+            <button v-if="!showCommentForm" class="tag-add-btn" @click="openCommentForm">+ Comment</button>
+          </div>
+          <!-- Add comment form -->
+          <div v-if="showCommentForm" class="comment-form">
+            <textarea
+              v-model="newCommentText"
+              class="comment-input"
+              placeholder="Add a comment or status update..."
+              rows="2"
+              @keydown.ctrl.enter="addComment"
+              @keyup.escape="closeCommentForm"
+              autofocus
+            ></textarea>
+            <div class="comment-form-actions">
+              <button class="primary small" @click="addComment" :disabled="!newCommentText.trim()">Add Comment</button>
+              <button class="small" @click="closeCommentForm">Cancel</button>
+              <span class="comment-hint">Ctrl+Enter to submit</span>
+            </div>
+          </div>
+          <!-- Comment list (newest first) -->
+          <div v-if="tasksStore.selectedTask.comments?.length > 0" class="comment-list">
+            <div
+              v-for="(comment, index) in [...tasksStore.selectedTask.comments].reverse()"
+              :key="index"
+              class="comment-item"
+            >
+              <div class="comment-meta">
+                <span class="comment-date">{{ formatCommentDate(comment.date) }}</span>
+                <button
+                  class="comment-delete"
+                  @click="deleteComment(tasksStore.selectedTask.comments.length - 1 - index)"
+                  title="Delete comment"
+                >&times;</button>
+              </div>
+              <div class="comment-text">{{ comment.text }}</div>
+            </div>
+          </div>
         </div>
 
         <div class="editor-content">
@@ -1507,6 +1609,22 @@ button.small {
   color: white;
 }
 
+/* Last comment preview in task list */
+.task-last-comment {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  opacity: 0.75;
+  font-style: italic;
+}
+
+.task-item.selected .task-last-comment {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 /* Tag Editor Bar (detail panel) */
 .tag-editor-bar {
   display: flex;
@@ -1599,6 +1717,118 @@ button.small {
 
 .tag-suggestion:hover {
   background: var(--color-bg-hover);
+}
+
+/* Comments Panel */
+.comments-panel {
+  border-bottom: 1px solid var(--color-border);
+  padding: 8px 16px;
+  flex-shrink: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.comments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.comments-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.comment-form {
+  margin-bottom: 8px;
+}
+
+.comment-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+
+.comment-input:focus {
+  border-color: var(--color-primary);
+}
+
+.comment-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.comment-hint {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+
+.comment-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.comment-date {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.comment-delete {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.comment-item:hover .comment-delete {
+  opacity: 1;
+}
+
+.comment-delete:hover {
+  color: var(--color-danger);
+}
+
+.comment-text {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Error Banner */

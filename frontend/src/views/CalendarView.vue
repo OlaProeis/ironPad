@@ -93,21 +93,144 @@ function formatDate(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-// Tasks grouped by due date
+// Calendar entry: a task plus whether it's a recurring occurrence (vs a real due_date)
+interface CalendarEntry {
+  task: Task
+  isRecurring: boolean
+}
+
+// Tasks grouped by due date (regular, non-recurring placements)
 const tasksByDate = computed(() => {
-  const map = new Map<string, Task[]>()
+  const map = new Map<string, CalendarEntry[]>()
   for (const task of tasksStore.allTasks) {
     if (task.due_date && !task.completed) {
       const existing = map.get(task.due_date) || []
-      existing.push(task)
+      existing.push({ task, isRecurring: false })
       map.set(task.due_date, existing)
     }
   }
   return map
 })
 
-function getTasksForDate(dateStr: string): Task[] {
-  return tasksByDate.value.get(dateStr) || []
+// Expand recurring tasks into the visible calendar range
+const recurringByDate = computed(() => {
+  const map = new Map<string, CalendarEntry[]>()
+  const days = calendarDays.value
+  if (days.length === 0) return map
+
+  const rangeStart = days[0].date
+  const rangeEnd = days[days.length - 1].date
+
+  for (const task of tasksStore.allTasks) {
+    if (task.completed || !task.recurrence) continue
+
+    const interval = task.recurrence_interval || 1
+    const anchorStr = task.due_date || task.created?.split('T')[0]
+    if (!anchorStr) continue
+
+    const anchor = new Date(anchorStr + 'T00:00:00')
+    const start = new Date(rangeStart + 'T00:00:00')
+    const end = new Date(rangeEnd + 'T00:00:00')
+    const occurrences: string[] = []
+
+    switch (task.recurrence) {
+      case 'daily': {
+        let cur = new Date(anchor)
+        // Advance to range start (skip past occurrences efficiently)
+        if (cur < start) {
+          const daysBehind = Math.floor((start.getTime() - cur.getTime()) / 86400000)
+          const skipCycles = Math.floor(daysBehind / interval) * interval
+          cur.setDate(cur.getDate() + skipCycles)
+        }
+        while (cur <= end && occurrences.length < 60) {
+          if (cur >= start) {
+            occurrences.push(dateFromObj(cur))
+          }
+          cur.setDate(cur.getDate() + interval)
+        }
+        break
+      }
+      case 'weekly': {
+        const targetDow = anchor.getDay()
+        let cur = new Date(start)
+        // Find first matching weekday in range
+        while (cur.getDay() !== targetDow && cur <= end) {
+          cur.setDate(cur.getDate() + 1)
+        }
+        while (cur <= end && occurrences.length < 10) {
+          // Check interval alignment (weeks since anchor)
+          const msDiff = cur.getTime() - anchor.getTime()
+          const weeksDiff = Math.round(msDiff / (7 * 86400000))
+          if (weeksDiff >= 0 && weeksDiff % interval === 0) {
+            occurrences.push(dateFromObj(cur))
+          }
+          cur.setDate(cur.getDate() + 7)
+        }
+        break
+      }
+      case 'monthly': {
+        const targetDay = anchor.getDate()
+        // Check months visible in the calendar range (usually 3: prev, current, next)
+        for (let mOffset = -1; mOffset <= 1; mOffset++) {
+          let y = currentYear.value
+          let m = currentMonth.value + mOffset
+          if (m < 0) { m = 11; y-- }
+          if (m > 11) { m = 0; y++ }
+
+          const daysInM = new Date(y, m + 1, 0).getDate()
+          const day = Math.min(targetDay, daysInM)
+          const dateStr = formatDate(y, m, day)
+
+          if (dateStr >= rangeStart && dateStr <= rangeEnd) {
+            const monthsDiff = (y - anchor.getFullYear()) * 12 + (m - anchor.getMonth())
+            if (monthsDiff >= 0 && monthsDiff % interval === 0) {
+              occurrences.push(dateStr)
+            }
+          }
+        }
+        break
+      }
+      case 'yearly': {
+        const tgtMonth = anchor.getMonth()
+        const tgtDay = anchor.getDate()
+        const y = currentYear.value
+        const dateStr = formatDate(y, tgtMonth, tgtDay)
+        if (dateStr >= rangeStart && dateStr <= rangeEnd) {
+          const yearsDiff = y - anchor.getFullYear()
+          if (yearsDiff >= 0 && yearsDiff % interval === 0) {
+            occurrences.push(dateStr)
+          }
+        }
+        break
+      }
+    }
+
+    for (const dateStr of occurrences) {
+      // Skip if the task already appears on this date via its due_date
+      if (task.due_date === dateStr) continue
+      const existing = map.get(dateStr) || []
+      existing.push({ task, isRecurring: true })
+      map.set(dateStr, existing)
+    }
+  }
+
+  return map
+})
+
+function dateFromObj(d: Date): string {
+  return formatDate(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+// Merge regular due-date tasks and recurring occurrences for a given date
+function getEntriesForDate(dateStr: string): CalendarEntry[] {
+  const regular = tasksByDate.value.get(dateStr) || []
+  const recurring = recurringByDate.value.get(dateStr) || []
+  return [...regular, ...recurring]
+}
+
+// Convenience: check if a date has any tasks (for cell styling)
+function hasTasksOnDate(dateStr: string): boolean {
+  return getEntriesForDate(dateStr).length > 0
 }
 
 function hasDailyNote(dateStr: string): boolean {
@@ -211,7 +334,7 @@ onMounted(async () => {
         :class="['calendar-cell', {
           'other-month': !day.isCurrentMonth,
           'is-today': day.isToday,
-          'has-tasks': getTasksForDate(day.date).length > 0,
+          'has-tasks': hasTasksOnDate(day.date),
         }]"
       >
         <div class="cell-header" @click="clickDate(day.date)">
@@ -220,20 +343,21 @@ onMounted(async () => {
         </div>
         <div class="cell-tasks">
           <div
-            v-for="task in getTasksForDate(day.date).slice(0, 3)"
-            :key="task.id"
-            :class="['cell-task', formatDueClass(day.date)]"
-            @click.stop="clickTask(task)"
-            :title="`${projectName(task.project_id)}: ${task.title}`"
+            v-for="entry in getEntriesForDate(day.date).slice(0, 3)"
+            :key="`${entry.task.id}-${entry.isRecurring ? 'r' : 'd'}`"
+            :class="['cell-task', formatDueClass(day.date), { recurring: entry.isRecurring }]"
+            @click.stop="clickTask(entry.task)"
+            :title="`${projectName(entry.task.project_id)}: ${entry.task.title}${entry.isRecurring ? ' (recurring)' : ''}`"
           >
-            {{ task.title }}
+            <span v-if="entry.isRecurring" class="recurring-icon" title="Recurring">&#x21bb;</span>
+            {{ entry.task.title }}
           </div>
           <div
-            v-if="getTasksForDate(day.date).length > 3"
+            v-if="getEntriesForDate(day.date).length > 3"
             class="cell-more"
             @click="clickDate(day.date)"
           >
-            +{{ getTasksForDate(day.date).length - 3 }} more
+            +{{ getEntriesForDate(day.date).length - 3 }} more
           </div>
         </div>
       </div>
@@ -411,6 +535,17 @@ onMounted(async () => {
 
 .cell-task.soon {
   border-left-color: var(--color-warning);
+}
+
+.cell-task.recurring {
+  border-left-style: dashed;
+  opacity: 0.85;
+}
+
+.recurring-icon {
+  font-size: 10px;
+  margin-right: 2px;
+  opacity: 0.7;
 }
 
 .cell-more {

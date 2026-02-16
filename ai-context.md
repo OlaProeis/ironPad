@@ -67,7 +67,7 @@ ironpad/
 ## Implemented Features
 
 ### Backend
-- API-only server (no frontend serving, no browser auto-open)
+- **Dual-mode server**: API-only in development; frontend-serving + system tray in production
 - Dynamic port (3000-3010)
 - Notes CRUD with atomic writes
 - Frontmatter auto-management
@@ -79,12 +79,13 @@ ironpad/
 - Git remote info (ahead/behind tracking), fetch support
 - Projects API with notes management
 - **File-based Tasks API** — each task is a markdown file with frontmatter
-  - Fields: id, title, completed, section, priority, due_date, is_active, tags, parent_id, recurrence, recurrence_interval
+  - Fields: id, title, completed, section, priority, due_date, is_active, tags, parent_id, recurrence, recurrence_interval, comments
   - Rich text descriptions with markdown support
   - Sorted by created date (stable ordering)
   - **Subtasks** — tasks with `parent_id` link to a parent task
   - **Tags** — YAML sequence in frontmatter, per-task labels for filtering
   - **Recurring tasks** — when completing a recurring task, auto-creates next instance with advanced due date
+  - **Comments** — date-stamped comment entries stored as YAML sequence in frontmatter; last comment shown as summary in list/dashboard
 - Daily notes API (`/api/daily`, `/api/daily/today`, `/api/daily/:date`)
 - Assets API (upload + serve)
 
@@ -113,9 +114,14 @@ ironpad/
   - **Tag filter bar** — click tags to filter task list
   - **Subtasks** — expandable subtasks under parent tasks, add subtask inline
   - **Recurrence picker** — set daily/weekly/monthly/yearly recurrence
+  - **Task comments** — date-stamped comments section in task detail, newest first, add/delete
+  - **Last comment summary** — most recent comment shown in task list and dashboard cards
   - Inline title editing (double-click)
-- **Calendar view** — month grid showing tasks by due date
+- **Calendar view** — month grid showing tasks by due date + recurring task expansion
   - Tasks with due dates plotted on calendar cells
+  - **Recurring tasks expanded** — daily/weekly/monthly/yearly tasks shown on computed occurrences
+  - Recurring occurrences use anchor date (`due_date` or `created`), respect `recurrence_interval`
+  - Recurring entries shown with dashed border and ↻ icon to distinguish from regular tasks
   - Daily notes shown as blue dots
   - Color-coded urgency (overdue, today, soon)
   - Month navigation + Today button
@@ -150,6 +156,8 @@ GET/POST    /api/projects/:id/tasks
 GET/PUT/DEL /api/projects/:id/tasks/:task_id
 PUT         /api/projects/:id/tasks/:task_id/toggle
 PUT         /api/projects/:id/tasks/:task_id/meta
+POST        /api/projects/:id/tasks/:task_id/comments
+DELETE      /api/projects/:id/tasks/:task_id/comments/:index
 
 GET         /api/tasks              # All tasks across projects
 GET         /api/daily
@@ -224,12 +232,25 @@ WS          /ws
 
 ---
 
-## Not Yet Implemented (Phase 6+)
+## Implemented in Phase 6
+
+- **Recurring tasks on calendar** — frontend expands daily/weekly/monthly/yearly tasks into the visible month grid
+  - Anchor date: `due_date` if set, otherwise `created`; respects `recurrence_interval`
+  - Deduplicates against regular due-date entries; visual indicator (dashed border, ↻ icon)
+- **System tray mode** — production binary runs in system tray (Windows, macOS, Linux)
+  - `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` hides console on Windows
+  - Server on background thread, tray event loop on main thread (cross-platform safe)
+  - Tray menu: "Open in Browser" / "Quit"
+  - Uses `tray-item` crate with platform-specific icon loading (`windows-sys` on Windows)
+  - Development mode unchanged (no tray, API-only)
+
+---
+
+## Not Yet Implemented (Phase 7+)
 
 - UI polish and animations
 - Responsive sidebar
 - Global hotkey (Ctrl+Shift+Space)
-- System tray mode
 - Backlinks between notes
 - Graph view
 - Export (PDF / HTML)
@@ -262,12 +283,14 @@ WS          /ws
 | Project note ID | `{slug}-index` format |
 | Task storage | Individual .md files in `tasks/` folder |
 | List sorting | By created date (stable, not affected by edits) |
-| Backend mode | API-only (no frontend serving) |
+| Backend mode | API-only (dev); frontend-serving + system tray (production) |
 | Theme | Dark by default, toggle to light, persists to localStorage |
 | Tags | YAML sequence in frontmatter, project-scoped filtering |
 | Subtasks | Separate task files with `parent_id` field linking to parent |
 | Recurring tasks | On completion, backend auto-creates next instance with advanced due date |
-| Calendar | Pure frontend month grid, tasks filtered by `due_date` presence |
+| Calendar | Pure frontend month grid, tasks by `due_date` + recurring expansion |
+| System tray | `tray-item` crate; main thread tray, background thread server; `windows-sys` for icon on Windows |
+| Task comments | YAML sequence in frontmatter, date-stamped, last comment as list/dashboard summary |
 | Dashboard | Home route `/`, loads all projects + all tasks for cross-project summary |
 
 ---

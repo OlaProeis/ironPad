@@ -65,7 +65,10 @@ function goHome() {
 <template>
   <header class="topbar">
     <div class="topbar-left">
-      <h1 class="app-title" @click="goHome" style="cursor: pointer" title="Dashboard">Ironpad</h1>
+      <h1 class="app-title" @click="goHome" style="cursor: pointer" title="Dashboard">
+        <img src="/logo-32.png" alt="" class="app-logo" />
+        Ironpad
+      </h1>
       
       <div class="project-selector">
         <button class="project-button" @click="toggleDropdown">
@@ -175,6 +178,15 @@ function goHome() {
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
 }
 
 .project-selector {

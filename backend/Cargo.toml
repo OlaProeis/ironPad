@@ -1,6 +1,6 @@
 [package]
 name = "ironpad"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -47,3 +47,14 @@ uuid = { version = "1.0", features = ["v4"] }
 # Utilities
 lazy_static = "1.4"
 tokio-util = { version = "0.7", features = ["io"] }
+
+# System tray (production mode)
+tray-item = "0.10"
+
+# Windows icon loading (for tray icon)
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
+
+# Build dependencies (Windows icon embedding)
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1"

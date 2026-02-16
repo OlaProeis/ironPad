@@ -140,17 +140,24 @@ onMounted(async () => {
             @click="goToTask(project.id, task)"
           >
             <span class="task-checkbox">&#9744;</span>
-            <span class="task-title">{{ task.title }}</span>
-            <div class="task-meta">
-              <span
-                v-for="tag in task.tags?.slice(0, 2)"
-                :key="tag"
-                class="task-tag"
-              >{{ tag }}</span>
-              <span
-                v-if="task.due_date && formatDueDate(task.due_date)"
-                :class="['task-due', formatDueDate(task.due_date)?.class]"
-              >{{ formatDueDate(task.due_date)?.text }}</span>
+            <div class="card-task-info">
+              <div class="card-task-row">
+                <span class="task-title">{{ task.title }}</span>
+                <div class="task-meta">
+                  <span
+                    v-for="tag in task.tags?.slice(0, 2)"
+                    :key="tag"
+                    class="task-tag"
+                  >{{ tag }}</span>
+                  <span
+                    v-if="task.due_date && formatDueDate(task.due_date)"
+                    :class="['task-due', formatDueDate(task.due_date)?.class]"
+                  >{{ formatDueDate(task.due_date)?.text }}</span>
+                </div>
+              </div>
+              <div v-if="task.last_comment" class="card-task-comment">
+                {{ task.last_comment }}
+              </div>
             </div>
           </div>
           <div
@@ -304,6 +311,20 @@ onMounted(async () => {
   font-size: 14px;
 }
 
+.card-task-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .card-task-item .task-title {
   flex: 1;
   font-size: 13px;
@@ -311,6 +332,16 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.card-task-comment {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+  opacity: 0.75;
 }
 
 .task-meta {

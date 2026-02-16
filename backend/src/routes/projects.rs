@@ -10,8 +10,9 @@ use std::fs;
 
 use crate::config;
 use crate::routes::tasks::{
-    create_task_handler, delete_task_handler, get_task_handler, list_project_tasks_handler,
-    toggle_task_handler, update_task_content_handler, update_task_meta_handler, CreateTaskRequest,
+    add_comment_handler, create_task_handler, delete_comment_handler, delete_task_handler,
+    get_task_handler, list_project_tasks_handler, toggle_task_handler,
+    update_task_content_handler, update_task_meta_handler, AddCommentRequest, CreateTaskRequest,
     UpdateTaskMetaRequest,
 };
 use crate::services::filesystem;
@@ -91,6 +92,14 @@ pub fn router() -> Router {
         )
         .route("/{id}/tasks/{task_id}/toggle", put(toggle_project_task))
         .route("/{id}/tasks/{task_id}/meta", put(update_project_task_meta))
+        .route(
+            "/{id}/tasks/{task_id}/comments",
+            axum::routing::post(add_project_task_comment),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/comments/{comment_index}",
+            axum::routing::delete(delete_project_task_comment),
+        )
         // Note routes
         .route(
             "/{id}/notes",
@@ -141,6 +150,19 @@ async fn update_project_task_meta(
 
 async fn delete_project_task(Path((id, task_id)): Path<(String, String)>) -> impl IntoResponse {
     delete_task_handler(id, task_id).await
+}
+
+async fn add_project_task_comment(
+    Path((id, task_id)): Path<(String, String)>,
+    Json(payload): Json<AddCommentRequest>,
+) -> impl IntoResponse {
+    add_comment_handler(id, task_id, payload).await
+}
+
+async fn delete_project_task_comment(
+    Path((id, task_id, comment_index)): Path<(String, String, usize)>,
+) -> impl IntoResponse {
+    delete_comment_handler(id, task_id, comment_index).await
 }
 
 async fn list_projects() -> impl IntoResponse {
