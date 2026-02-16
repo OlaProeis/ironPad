@@ -16,6 +16,8 @@ Ironpad stores all your notes, projects, and tasks as plain Markdown files. No c
 
 > **v0.2.0** -- Task comments, recurring tasks on calendar, system tray mode, and app branding. See [CHANGELOG.md](CHANGELOG.md) for details.
 
+![What's New in v0.2.0](docs/graphics/whats-new-v020.png)
+
 ---
 
 ## Features
