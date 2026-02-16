@@ -11,9 +11,8 @@ use std::fs;
 use crate::config;
 use crate::routes::tasks::{
     add_comment_handler, create_task_handler, delete_comment_handler, delete_task_handler,
-    get_task_handler, list_project_tasks_handler, toggle_task_handler,
-    update_task_content_handler, update_task_meta_handler, AddCommentRequest, CreateTaskRequest,
-    UpdateTaskMetaRequest,
+    get_task_handler, list_project_tasks_handler, toggle_task_handler, update_task_content_handler,
+    update_task_meta_handler, AddCommentRequest, CreateTaskRequest, UpdateTaskMetaRequest,
 };
 use crate::services::filesystem;
 use crate::services::frontmatter;
