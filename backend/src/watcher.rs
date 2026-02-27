@@ -138,7 +138,7 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
         }
         EventKind::Modify(_) => {
             tracing::info!("External file modified: {}", path_str);
-            
+
             // Trigger backlink index rebuild for note files
             if is_note_file(&paths[0]) {
                 tokio::task::spawn_blocking(|| {
@@ -147,12 +147,12 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
                     }
                 });
             }
-            
+
             Some(WsMessage::FileModified { path: path_str })
         }
         EventKind::Remove(_) => {
             tracing::info!("External file deleted: {}", path_str);
-            
+
             // Trigger backlink index rebuild when notes are deleted
             if is_note_file(&paths[0]) {
                 tokio::task::spawn_blocking(|| {
@@ -161,7 +161,7 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
                     }
                 });
             }
-            
+
             Some(WsMessage::FileDeleted { path: path_str })
         }
         _ => None,
@@ -175,7 +175,7 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
 /// Check if a path is a note file (not tasks, prompts, etc.)
 fn is_note_file(path: &Path) -> bool {
     let path_str = path.to_string_lossy();
-    
+
     // Must be a markdown file
     if path.extension().and_then(|s| s.to_str()) != Some("md") {
         return false;

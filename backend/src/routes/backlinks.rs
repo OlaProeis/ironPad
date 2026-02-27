@@ -138,7 +138,7 @@ async fn rebuild_index() -> impl IntoResponse {
             Json(serde_json::json!({
                 "success": false,
                 "error": err
-            }))
+            })),
         )
             .into_response(),
     }

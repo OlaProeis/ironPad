@@ -1,9 +1,9 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use once_cell::sync::Lazy;
-use regex::Regex;
 use walkdir::WalkDir;
 
 use crate::config;
@@ -50,19 +50,17 @@ static NOTE_TITLES: Lazy<Arc<Mutex<HashMap<String, String>>>> =
 
 /// Regex to match wiki-style links: [[note-id]] or [[note-id|display text]]
 /// Also handles escaped versions like \[\[note-id]] that Milkdown may produce
-static WIKI_LINK_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\\?\[\\?\[([^\[\]]+?)(?:\|([^\[\]]*?))?\\?\]\\?\]").unwrap()
-});
+static WIKI_LINK_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\\?\[\\?\[([^\[\]]+?)(?:\|([^\[\]]*?))?\\?\]\\?\]").unwrap());
 
 /// Regex to match markdown links that reference other notes by ID: [text](note-id)
-static MARKDOWN_LINK_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\[([^\]]*)\]\(([^\)]+)\)").unwrap()
-});
+static MARKDOWN_LINK_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\[([^\]]*)\]\(([^\)]+)\)").unwrap());
 
 /// Check if a path is a note file (not tasks, prompts, etc.)
 fn is_note_file(path: &Path) -> bool {
     let path_str = path.to_string_lossy();
-    
+
     // Must be a markdown file
     if path.extension().and_then(|s| s.to_str()) != Some("md") {
         return false;
@@ -143,11 +141,20 @@ fn extract_note_title(path: &Path, frontmatter: &serde_yaml::Mapping) -> String 
 }
 
 /// Extract all links from note content
-fn extract_links(content: &str, source_id: &str, source_title: &str, source_path: &str) -> Vec<NoteLink> {
+fn extract_links(
+    content: &str,
+    source_id: &str,
+    source_title: &str,
+    source_path: &str,
+) -> Vec<NoteLink> {
     let mut links = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
-    
-    tracing::debug!("Extracting links from content with {} lines for note: {}", lines.len(), source_id);
+
+    tracing::debug!(
+        "Extracting links from content with {} lines for note: {}",
+        lines.len(),
+        source_id
+    );
 
     for (line_idx, line) in lines.iter().enumerate() {
         // Find wiki-style links [[target-id]] or [[target-id|display]]
@@ -174,8 +181,13 @@ fn extract_links(content: &str, source_id: &str, source_title: &str, source_path
         for cap in MARKDOWN_LINK_REGEX.captures_iter(line) {
             let link_text = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let target = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-            
-            tracing::debug!("Found markdown link candidate: [{}]({}) on line {}", link_text, target, line_idx + 1);
+
+            tracing::debug!(
+                "Found markdown link candidate: [{}]({}) on line {}",
+                link_text,
+                target,
+                line_idx + 1
+            );
 
             // Only consider targets that look like note IDs (alphanumeric with dashes/underscores)
             // Exclude URLs (http, https, etc.)
@@ -186,10 +198,17 @@ fn extract_links(content: &str, source_id: &str, source_title: &str, source_path
                 && !target.starts_with("/")
                 && !target.contains('/')
                 && target.len() >= 3
-                && target.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+                && target
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
             {
                 let context = extract_context(line, &cap[0]);
-                tracing::info!("Extracted markdown link: {} -> {} (text: {})", source_id, target, link_text);
+                tracing::info!(
+                    "Extracted markdown link: {} -> {} (text: {})",
+                    source_id,
+                    target,
+                    link_text
+                );
                 links.push(NoteLink {
                     source_id: source_id.to_string(),
                     source_title: source_title.to_string(),
@@ -200,11 +219,15 @@ fn extract_links(content: &str, source_id: &str, source_title: &str, source_path
                     line_number: line_idx + 1,
                 });
             } else {
-                tracing::debug!("Skipped markdown link: [{}]({}) - doesn't match note ID pattern", link_text, target);
+                tracing::debug!(
+                    "Skipped markdown link: [{}]({}) - doesn't match note ID pattern",
+                    link_text,
+                    target
+                );
             }
         }
     }
-    
+
     tracing::info!("Extracted {} links from note: {}", links.len(), source_id);
 
     links
@@ -213,7 +236,7 @@ fn extract_links(content: &str, source_id: &str, source_title: &str, source_path
 /// Extract surrounding context for a link (the whole sentence or line)
 fn extract_context(line: &str, link_match: &str) -> String {
     let line = line.trim();
-    
+
     // Find the sentence containing the link
     let sentences: Vec<&str> = line.split(". ").collect();
     for sentence in &sentences {
@@ -221,7 +244,7 @@ fn extract_context(line: &str, link_match: &str) -> String {
             return sentence.trim().to_string();
         }
     }
-    
+
     // Fallback: return the whole line (truncated if too long)
     if line.len() > 200 {
         format!("{}...", &line[..200])
@@ -241,7 +264,9 @@ pub fn rebuild_link_index() -> Result<usize, String> {
         .filter_entry(|e| {
             // Skip common ignored directories
             let path_str = e.path().to_string_lossy();
-            !path_str.contains(".git") && !path_str.contains("assets") && !path_str.contains("archive")
+            !path_str.contains(".git")
+                && !path_str.contains("assets")
+                && !path_str.contains("archive")
         })
         .filter_map(Result::ok)
     {
@@ -269,10 +294,7 @@ pub fn rebuild_link_index() -> Result<usize, String> {
 
         // Add to index (grouped by target)
         for link in links {
-            index
-                .entry(link.target_id.clone())
-                .or_default()
-                .push(link);
+            index.entry(link.target_id.clone()).or_default().push(link);
         }
     }
 
@@ -344,7 +366,10 @@ pub fn get_forward_links(note_id: &str) -> Vec<ForwardLink> {
     for (target_id, links) in index.iter() {
         for link in links {
             if link.source_id == note_id {
-                let target_title = link.target_title.clone().or_else(|| titles.get(target_id).cloned());
+                let target_title = link
+                    .target_title
+                    .clone()
+                    .or_else(|| titles.get(target_id).cloned());
                 forward_links.push(ForwardLink {
                     target_id: target_id.clone(),
                     target_title,
@@ -401,7 +426,9 @@ pub fn get_note_info(note_id: &str) -> Option<(String, String, String)> {
         .into_iter()
         .filter_entry(|e| {
             let path_str = e.path().to_string_lossy();
-            !path_str.contains(".git") && !path_str.contains("assets") && !path_str.contains("archive")
+            !path_str.contains(".git")
+                && !path_str.contains("assets")
+                && !path_str.contains("archive")
         })
         .filter_map(Result::ok)
     {
@@ -437,12 +464,11 @@ pub fn search_note_titles(query: &str, limit: usize) -> Vec<(String, String)> {
     };
 
     let query_lower = query.to_lowercase();
-    
+
     titles
         .iter()
         .filter(|(id, title)| {
-            id.to_lowercase().contains(&query_lower) || 
-            title.to_lowercase().contains(&query_lower)
+            id.to_lowercase().contains(&query_lower) || title.to_lowercase().contains(&query_lower)
         })
         .take(limit)
         .map(|(id, title)| (id.clone(), title.clone()))

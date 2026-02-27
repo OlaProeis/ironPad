@@ -75,7 +75,10 @@ async fn run_server(port_tx: Option<std::sync::mpsc::Sender<u16>>) {
             warn!("Failed to build initial backlink index: {}", e);
         } else {
             let (total_links, unique_targets) = services::backlinks::get_link_stats();
-            info!("Backlink index: {} links across {} notes", total_links, unique_targets);
+            info!(
+                "Backlink index: {} links across {} notes",
+                total_links, unique_targets
+            );
         }
     });
 

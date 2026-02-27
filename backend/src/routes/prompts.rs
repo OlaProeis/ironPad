@@ -16,7 +16,10 @@ pub fn router() -> Router {
         .route("/", get(list_prompts).post(create_prompt))
         .route("/folders", get(list_folders))
         .route("/search/semantic", get(semantic_search))
-        .route("/{id}", get(get_prompt).put(update_prompt).delete(delete_prompt))
+        .route(
+            "/{id}",
+            get(get_prompt).put(update_prompt).delete(delete_prompt),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,7 +42,9 @@ async fn list_prompts(Query(query): Query<PromptListQuery>) -> impl IntoResponse
 async fn get_prompt(Path(id): Path<String>) -> impl IntoResponse {
     match prompts::get_prompt(&id) {
         Ok(prompt) => Json(prompt).into_response(),
-        Err(err) if err.starts_with("Prompt not found") => (StatusCode::NOT_FOUND, err).into_response(),
+        Err(err) if err.starts_with("Prompt not found") => {
+            (StatusCode::NOT_FOUND, err).into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read prompt: {}", err),
@@ -62,10 +67,15 @@ async fn create_prompt(Json(payload): Json<PromptCreateRequest>) -> impl IntoRes
     }
 }
 
-async fn update_prompt(Path(id): Path<String>, Json(payload): Json<PromptUpdateRequest>) -> impl IntoResponse {
+async fn update_prompt(
+    Path(id): Path<String>,
+    Json(payload): Json<PromptUpdateRequest>,
+) -> impl IntoResponse {
     match prompts::update_prompt(&id, payload) {
         Ok(prompt) => Json(prompt).into_response(),
-        Err(err) if err.starts_with("Prompt not found") => (StatusCode::NOT_FOUND, err).into_response(),
+        Err(err) if err.starts_with("Prompt not found") => {
+            (StatusCode::NOT_FOUND, err).into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to update prompt: {}", err),
@@ -77,7 +87,9 @@ async fn update_prompt(Path(id): Path<String>, Json(payload): Json<PromptUpdateR
 async fn delete_prompt(Path(id): Path<String>) -> impl IntoResponse {
     match prompts::delete_prompt(&id) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(err) if err.starts_with("Prompt not found") => (StatusCode::NOT_FOUND, err).into_response(),
+        Err(err) if err.starts_with("Prompt not found") => {
+            (StatusCode::NOT_FOUND, err).into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to delete prompt: {}", err),

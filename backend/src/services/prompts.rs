@@ -114,7 +114,11 @@ fn prompt_root(scope: &str, project_id: Option<&str>) -> Result<PathBuf, String>
 
 fn list_prompt_roots() -> Vec<(String, Option<String>, PathBuf)> {
     let mut roots = Vec::new();
-    roots.push(("global".to_string(), None, config::data_dir().join("prompts")));
+    roots.push((
+        "global".to_string(),
+        None,
+        config::data_dir().join("prompts"),
+    ));
 
     let projects_dir = config::data_dir().join("projects");
     if let Ok(entries) = fs::read_dir(projects_dir) {
@@ -145,11 +149,16 @@ fn is_ignored(entry: &DirEntry) -> bool {
     })
 }
 
-fn build_summary(path: &Path, default_scope: &str, default_project_id: Option<String>) -> Result<PromptSummary, String> {
+fn build_summary(
+    path: &Path,
+    default_scope: &str,
+    default_project_id: Option<String>,
+) -> Result<PromptSummary, String> {
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let (fm, _body, _has_fm) = frontmatter::parse_frontmatter(&raw);
 
-    let id = frontmatter::get_str(&fm, "id").unwrap_or_else(|| frontmatter::derive_id_from_path(path));
+    let id =
+        frontmatter::get_str(&fm, "id").unwrap_or_else(|| frontmatter::derive_id_from_path(path));
     let title = frontmatter::get_str(&fm, "title").unwrap_or_else(|| {
         path.file_stem()
             .and_then(|s| s.to_str())
@@ -176,7 +185,11 @@ fn build_summary(path: &Path, default_scope: &str, default_project_id: Option<St
     })
 }
 
-fn build_prompt(path: &Path, default_scope: &str, default_project_id: Option<String>) -> Result<Prompt, String> {
+fn build_prompt(
+    path: &Path,
+    default_scope: &str,
+    default_project_id: Option<String>,
+) -> Result<Prompt, String> {
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let (fm, body, _has_fm) = frontmatter::parse_frontmatter(&raw);
 
@@ -223,7 +236,11 @@ fn prompt_matches_filters(prompt: &PromptSummary, query: &PromptListQuery) -> bo
         if !ql.is_empty() {
             let tags = prompt.tags.join(" ");
             let description = prompt.description.clone().unwrap_or_default();
-            let hay = format!("{} {} {} {}", prompt.title, prompt.folder, tags, description).to_lowercase();
+            let hay = format!(
+                "{} {} {} {}",
+                prompt.title, prompt.folder, tags, description
+            )
+            .to_lowercase();
             if !hay.contains(&ql) {
                 return false;
             }
@@ -299,7 +316,11 @@ pub fn get_prompt(prompt_id: &str) -> Result<Prompt, String> {
 
 pub fn create_prompt(req: PromptCreateRequest) -> Result<Prompt, String> {
     let scope = normalize_scope(req.scope.as_deref());
-    let project_id = req.project_id.as_deref().map(|s| s.trim()).map(String::from);
+    let project_id = req
+        .project_id
+        .as_deref()
+        .map(|s| s.trim())
+        .map(String::from);
     let root = prompt_root(&scope, project_id.as_deref())?;
     let folder = normalize_folder(req.folder.as_deref());
     let folder_dir = if folder == "root" {
@@ -320,7 +341,10 @@ pub fn create_prompt(req: PromptCreateRequest) -> Result<Prompt, String> {
 
     let mut fm = Mapping::new();
     let now = Utc::now().to_rfc3339();
-    fm.insert(Value::from("id"), Value::from(frontmatter::derive_id_from_path(&file_path)));
+    fm.insert(
+        Value::from("id"),
+        Value::from(frontmatter::derive_id_from_path(&file_path)),
+    );
     fm.insert(Value::from("type"), Value::from("prompt"));
     fm.insert(Value::from("scope"), Value::from(scope.clone()));
     if let Some(pid) = &project_id {
@@ -334,7 +358,12 @@ pub fn create_prompt(req: PromptCreateRequest) -> Result<Prompt, String> {
     );
     fm.insert(
         Value::from("tags"),
-        Value::Sequence(normalize_tags(req.tags).into_iter().map(Value::from).collect()),
+        Value::Sequence(
+            normalize_tags(req.tags)
+                .into_iter()
+                .map(Value::from)
+                .collect(),
+        ),
     );
     fm.insert(Value::from("created"), Value::from(now.clone()));
     fm.insert(Value::from("updated"), Value::from(now));
@@ -361,7 +390,10 @@ pub fn update_prompt(prompt_id: &str, req: PromptUpdateRequest) -> Result<Prompt
         fm.insert(Value::from("title"), Value::from(title.trim().to_string()));
     }
     if let Some(folder) = req.folder {
-        fm.insert(Value::from("folder"), Value::from(normalize_folder(Some(&folder))));
+        fm.insert(
+            Value::from("folder"),
+            Value::from(normalize_folder(Some(&folder))),
+        );
     }
     if let Some(description) = req.description {
         fm.insert(Value::from("description"), Value::from(description));
@@ -369,11 +401,18 @@ pub fn update_prompt(prompt_id: &str, req: PromptUpdateRequest) -> Result<Prompt
     if let Some(tags) = req.tags {
         fm.insert(
             Value::from("tags"),
-            Value::Sequence(normalize_tags(Some(tags)).into_iter().map(Value::from).collect()),
+            Value::Sequence(
+                normalize_tags(Some(tags))
+                    .into_iter()
+                    .map(Value::from)
+                    .collect(),
+            ),
         );
     }
 
-    let content_body = req.content.unwrap_or_else(|| old_body.trim_start().to_string());
+    let content_body = req
+        .content
+        .unwrap_or_else(|| old_body.trim_start().to_string());
     let rebuilt = frontmatter::serialize_frontmatter(&fm, &content_body)?;
     filesystem::atomic_write(&path, rebuilt.as_bytes())?;
 
@@ -386,7 +425,10 @@ pub fn delete_prompt(prompt_id: &str) -> Result<(), String> {
     fs::remove_file(path).map_err(|e| e.to_string())
 }
 
-pub fn list_folders(scope: Option<&str>, project_id: Option<&str>) -> Result<Vec<PromptFolder>, String> {
+pub fn list_folders(
+    scope: Option<&str>,
+    project_id: Option<&str>,
+) -> Result<Vec<PromptFolder>, String> {
     let query = PromptListQuery {
         scope: scope.map(|s| s.to_string()),
         project_id: project_id.map(|s| s.to_string()),
@@ -442,7 +484,9 @@ fn semantic_score(query: &str, prompt: &Prompt) -> (f32, Vec<String>) {
     let title_tokens: HashSet<String> = tokenize(&prompt.title).into_iter().collect();
     let tag_tokens: HashSet<String> = prompt.tags.iter().map(|t| t.to_lowercase()).collect();
     let body_tokens: HashSet<String> = tokenize(&prompt.content).into_iter().collect();
-    let desc_tokens: HashSet<String> = tokenize(prompt.description.as_deref().unwrap_or("")).into_iter().collect();
+    let desc_tokens: HashSet<String> = tokenize(prompt.description.as_deref().unwrap_or(""))
+        .into_iter()
+        .collect();
 
     let mut matched = BTreeSet::new();
     let mut title_hits = 0.0f32;
@@ -474,10 +518,16 @@ fn semantic_score(query: &str, prompt: &Prompt) -> (f32, Vec<String>) {
         return (0.0, Vec::new());
     }
 
-    let mut score =
-        (title_hits / denom) * 0.40 + (tag_hits / denom) * 0.25 + (desc_hits / denom) * 0.20 + (body_hits / denom) * 0.15;
+    let mut score = (title_hits / denom) * 0.40
+        + (tag_hits / denom) * 0.25
+        + (desc_hits / denom) * 0.20
+        + (body_hits / denom) * 0.15;
 
-    if prompt.content.to_lowercase().contains(&query.to_lowercase()) {
+    if prompt
+        .content
+        .to_lowercase()
+        .contains(&query.to_lowercase())
+    {
         score += 0.15;
     }
 

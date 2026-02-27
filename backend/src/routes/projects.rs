@@ -14,9 +14,9 @@ use crate::routes::tasks::{
     get_task_handler, list_project_tasks_handler, toggle_task_handler, update_task_content_handler,
     update_task_meta_handler, AddCommentRequest, CreateTaskRequest, UpdateTaskMetaRequest,
 };
+use crate::services::backlinks;
 use crate::services::filesystem;
 use crate::services::frontmatter;
-use crate::services::backlinks;
 
 #[derive(Debug, Serialize)]
 pub struct Project {
@@ -840,7 +840,11 @@ async fn update_project_note(
         .and_then(|v| v.as_str())
         .map(String::from)
         .unwrap_or_else(|| note_id.clone());
-    tracing::info!("Updating backlinks for note: {} with content length: {}", note_id_for_links, body.len());
+    tracing::info!(
+        "Updating backlinks for note: {} with content length: {}",
+        note_id_for_links,
+        body.len()
+    );
     backlinks::update_note_links(&note_id_for_links, &body);
     tracing::info!("Backlinks updated for note: {}", note_id_for_links);
 
@@ -945,7 +949,7 @@ async fn get_project_notes_titles(Path(project_id): Path<String>) -> impl IntoRe
         .join("projects")
         .join(&project_id)
         .join("index.md");
-    
+
     if let Ok(content) = fs::read_to_string(&index_path) {
         let (fm, _, _) = frontmatter::parse_frontmatter(&content);
         let id = fm
@@ -976,7 +980,7 @@ async fn get_project_notes_titles(Path(project_id): Path<String>) -> impl IntoRe
 
                 if let Ok(content) = fs::read_to_string(&path) {
                     let (fm, _, _) = frontmatter::parse_frontmatter(&content);
-                    
+
                     let filename = path
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -1016,7 +1020,10 @@ async fn search_project_notes(
     Path(project_id): Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let query = params.get("q").map(|s| s.to_lowercase()).unwrap_or_default();
+    let query = params
+        .get("q")
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
     let limit = params
         .get("limit")
         .and_then(|s| s.parse::<usize>().ok())
@@ -1040,7 +1047,7 @@ async fn search_project_notes(
 
                 if let Ok(content) = fs::read_to_string(&path) {
                     let (fm, _, _) = frontmatter::parse_frontmatter(&content);
-                    
+
                     let filename = path
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -1077,7 +1084,7 @@ async fn search_project_notes(
         .join("projects")
         .join(&project_id)
         .join("index.md");
-    
+
     if let Ok(content) = fs::read_to_string(&index_path) {
         let (fm, _, _) = frontmatter::parse_frontmatter(&content);
         let id = fm
@@ -1090,7 +1097,7 @@ async fn search_project_notes(
             .and_then(|v| v.as_str())
             .map(String::from)
             .unwrap_or_else(|| "Project Index".to_string());
-        
+
         if id.to_lowercase().contains(&query) || title.to_lowercase().contains(&query) {
             results.push(NoteTitleEntry {
                 id,
