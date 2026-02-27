@@ -1,7 +1,9 @@
 pub mod assets;
+pub mod backlinks;
 pub mod daily;
 pub mod git;
 pub mod notes;
+pub mod prompts;
 pub mod projects;
 pub mod search;
 pub mod tasks;

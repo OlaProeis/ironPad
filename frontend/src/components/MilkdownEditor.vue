@@ -5,7 +5,7 @@ import { Crepe } from '@milkdown/crepe'
 import { useThemeStore } from '../stores'
 import MilkdownEditorCore from './MilkdownEditorCore.vue'
 
-defineProps<{
+const props = defineProps<{
   modelValue: string
   readonly?: boolean
   placeholder?: string
@@ -20,17 +20,21 @@ const emit = defineEmits<{
 const themeStore = useThemeStore()
 const uploading = ref(false)
 const editorInstance = ref<Crepe | null>(null)
+const remountCounter = ref(0)
 
 const isDarkMode = computed(() => themeStore.getEffectiveTheme() === 'dark')
+const effectiveKey = computed(() => `${props.editorKey}-${remountCounter.value}`)
 
-// Handle content updates from the core editor
 function handleContentUpdate(value: string) {
   emit('update:modelValue', value)
 }
 
-// Store editor instance when ready
 function handleEditorReady(crepe: Crepe) {
   editorInstance.value = crepe
+}
+
+function handleForceRemount() {
+  remountCounter.value++
 }
 </script>
 
@@ -48,16 +52,15 @@ function handleEditorReady(crepe: Crepe) {
       Uploading image...
     </div>
     
-    <!-- Milkdown Editor with Crepe (includes built-in toolbar) -->
-    <!-- CRITICAL: Key the entire container to force full remount when switching notes/tasks -->
-    <!-- This ensures the Milkdown editor instance is completely recreated, not just updated -->
-    <div :key="editorKey" class="milkdown-container" :class="{ 'is-readonly': readonly }">
+    <div :key="effectiveKey" class="milkdown-container" :class="{ 'is-readonly': readonly }">
       <MilkdownProvider>
         <MilkdownEditorCore
           :model-value="modelValue"
           :readonly="readonly"
+          :project-id="projectId"
           @update:model-value="handleContentUpdate"
           @editor-ready="handleEditorReady"
+          @force-remount="handleForceRemount"
         />
       </MilkdownProvider>
     </div>

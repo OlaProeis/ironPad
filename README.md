@@ -8,13 +8,14 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)
-![Version](https://img.shields.io/badge/version-0.2.0-green)
+![Version](https://img.shields.io/badge/version-0.3.0-green)
 
 Ironpad stores all your notes, projects, and tasks as plain Markdown files. No cloud services, no vendor lock-in -- your data stays on your machine in a format you can read and edit with any text editor. Every change is automatically versioned with Git.
 
 ![Ironpad Screenshot](docs/screenshot.jpg)
 
-> **v0.2.0** -- Task comments, recurring tasks on calendar, system tray mode, and app branding. See [CHANGELOG.md](CHANGELOG.md) for details.
+> **v0.3.0** -- Prompt Manager, calendar drag-and-drop rescheduling, week/day calendar views, and prompt-level Git history.  
+> **Previous (v0.2.0)** -- Task comments, recurring tasks on calendar, system tray mode, and app branding. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ![What's New in v0.2.0](docs/graphics/whats-new-v020.png)
 
@@ -27,12 +28,13 @@ Ironpad stores all your notes, projects, and tasks as plain Markdown files. No c
 - **Git integration** -- Automatic version control with 60-second commit batching, full diff viewer, push/fetch
 - **WYSIWYG editing** -- Milkdown editor with real-time markdown rendering and formatting toolbar
 - **Project management** -- Organize tasks and notes by project with due dates, tags, subtasks, recurrence, and comments
-- **Calendar view** -- Month grid showing tasks by due date with color-coded urgency; recurring tasks automatically expanded across the month
+- **Calendar view** -- Month, week, and day views showing tasks by due date with color-coded urgency; drag-and-drop rescheduling; recurring tasks automatically expanded across the calendar
 - **Dashboard** -- Cross-project overview with active task summaries
 - **Daily notes** -- Quick capture with templates for daily journaling
 - **Real-time sync** -- WebSocket-based live updates; edit in VS Code, see changes in the browser instantly
 - **External editing** -- Full support for VS Code, Obsidian, Vim, or any text editor
 - **Search** -- ripgrep-powered full-text search across all files (Ctrl+K)
+- **Prompt Manager** -- Global and project-scoped prompt libraries with folders, tags, semantic search, variable templates (`{{...}}`), one-click copy, and copy-rendered output
 - **Dark theme** -- Beautiful dark UI by default with light mode toggle
 - **System tray** -- Runs quietly in the system tray (Windows, macOS, Linux); no console window in release builds
 - **Tiny footprint** -- 5 MB binary, ~20 MB RAM, sub-second startup
@@ -85,13 +87,17 @@ Open http://localhost:5173 in your browser.
 
 ## Roadmap
 
-![Roadmap](docs/graphics/roadmap.png)
+Ironpad is under active development. See [ROADMAP.md](ROADMAP.md) for detailed release plans.
 
-Ironpad is under active development. Here's what's planned:
+Current status:
 
 - [x] Task comments and activity summary
 - [x] Recurring tasks on calendar (daily/weekly/monthly/yearly expansion)
 - [x] System tray mode (Windows, macOS, Linux)
+- [x] Prompt Manager (global + project prompts, semantic search, Git version history)
+- [x] Prompt variables + copy-rendered workflow (`{{variable_name}}`)
+- [x] Calendar drag-and-drop rescheduling
+- [x] Week and day calendar views
 - [ ] UI polish and animations
 - [ ] Tag extraction and filtering across projects
 - [ ] Backlinks between notes

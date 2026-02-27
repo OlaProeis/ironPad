@@ -1,18 +1,41 @@
 # AI Context — Ironpad
 
-Paste this into every new AI chat for project context.
+## Rules for This File (READ FIRST)
+
+**What belongs in ai-context.md:**
+- Architecture and system design
+- Critical patterns and technical decisions
+- Active constraints and known issues
+- Key workflows and conventions
+- Active work items (In Progress)
+
+**What does NOT belong here:**
+- History of completed work → use `CHANGELOG.md`
+- Session handover notes → use `HANDOVER.md`
+- Feature wish lists → use `ROADMAP.md`
+- Full API documentation → use `docs/API.md`
+
+**When to update:**
+- Adding new critical patterns or constraints
+- Changing architecture decisions
+- Adding/removing in-progress items
+- Documenting new known issues
 
 ---
 
-## What It Is
+## Project Overview
 
 **Ironpad** is a local-first, file-based personal project & knowledge management system.
 
-- **Backend**: Rust (Axum 0.8, Tokio)
-- **Frontend**: Vue 3 (Vite)
-- **Data**: Plain Markdown files with YAML frontmatter
-- **Versioning**: Local Git repository
-- **UI**: System browser (no Electron)
+| Component | Technology |
+|-----------|------------|
+| Backend | Rust (Axum 0.8, Tokio) |
+| Frontend | Vue 3 (Vite, TypeScript) |
+| Editor | Milkdown (ProseMirror-based WYSIWYG) |
+| State | Pinia |
+| Data | Plain Markdown + YAML frontmatter |
+| Versioning | Local Git repository |
+| UI | System browser (no Electron) |
 
 ---
 
@@ -26,7 +49,9 @@ Paste this into every new AI chat for project context.
 
 ---
 
-## Current Architecture
+## Architecture
+
+### Directory Structure
 
 ```
 ironpad/
@@ -34,237 +59,32 @@ ironpad/
 │   └── src/
 │       ├── main.rs           # Server bootstrap, WebSocket, routes
 │       ├── routes/           # API endpoints
-│       ├── services/         # Business logic (filesystem, git, search)
+│       ├── services/         # Business logic (filesystem, git, search, tasks)
 │       ├── models/           # Data structures
-│       ├── websocket.rs      # Real-time sync
 │       └── watcher.rs        # File system watching
 ├── frontend/          # Vue 3 SPA
 │   └── src/
-│       ├── App.vue           # Root component with router-view
-│       ├── main.ts           # Entry point (Pinia + Vue Router)
+│       ├── App.vue           # Root component
 │       ├── router/           # Vue Router config
-│       ├── stores/           # Pinia stores (notes, projects, tasks, ui, websocket, git)
-│       ├── views/            # Route views (DashboardView, ProjectView, TasksView, CalendarView, DailyView)
-│       ├── components/       # Reusable components (Sidebar, MarkdownEditor, etc.)
-│       ├── composables/      # Vue composables (useWebSocket)
-│       ├── api/              # API client (client.ts)
-│       └── types/            # TypeScript types (index.ts)
+│       ├── stores/           # Pinia stores
+│       ├── views/            # Route views
+│       ├── components/       # Reusable components
+│       ├── api/              # API client
+│       └── types/            # TypeScript types
 └── data/              # User data (separate git repo)
-    ├── notes/         # Standalone notes
+    ├── prompts/       # Global prompts
     ├── projects/      # Project folders
     │   └── {project}/
-    │       ├── index.md    # Project overview
-    │       ├── notes/      # Project-specific notes
-    │       └── tasks/      # Individual task files (task-YYYYMMDD-HHMMSS.md)
+    │       ├── index.md      # Project overview
+    │       ├── notes/        # Project notes
+    │       ├── prompts/      # Project prompts
+    │       └── tasks/        # Task files (task-YYYYMMDD-HHMMSS.md)
     ├── daily/         # Daily notes (YYYY-MM-DD.md)
     ├── archive/       # Archived items
-    ├── index.md       # Landing page
     └── inbox.md       # Quick capture
 ```
 
----
-
-## Implemented Features
-
-### Backend
-- **Dual-mode server**: API-only in development; frontend-serving + system tray in production
-- Dynamic port (3000-3010)
-- Notes CRUD with atomic writes
-- Frontmatter auto-management
-- WebSocket server for real-time sync + file locking
-- File watcher (filters own saves)
-- Search (ripgrep with fallback)
-- Git status + auto-commit (60s batching) + push + conflict detection
-- **Full Git panel** with commit history, diff viewer, custom commit messages
-- Git remote info (ahead/behind tracking), fetch support
-- Projects API with notes management
-- **File-based Tasks API** — each task is a markdown file with frontmatter
-  - Fields: id, title, completed, section, priority, due_date, is_active, tags, parent_id, recurrence, recurrence_interval, comments
-  - Rich text descriptions with markdown support
-  - Sorted by created date (stable ordering)
-  - **Subtasks** — tasks with `parent_id` link to a parent task
-  - **Tags** — YAML sequence in frontmatter, per-task labels for filtering
-  - **Recurring tasks** — when completing a recurring task, auto-creates next instance with advanced due date
-  - **Comments** — date-stamped comment entries stored as YAML sequence in frontmatter; last comment shown as summary in list/dashboard
-- Daily notes API (`/api/daily`, `/api/daily/today`, `/api/daily/:date`)
-- Assets API (upload + serve)
-
-### Frontend
-- Vue Router navigation
-- Pinia state management
-- **Milkdown WYSIWYG editor** — ProseMirror-based, renders markdown as you type
-  - CommonMark + GFM support (tables, strikethrough, task lists)
-  - **Toolbar** with formatting buttons (bold, italic, headings, links, images, code, lists, quotes)
-  - **Image upload** — click image button, select file, auto-uploads and inserts markdown
-  - History (undo/redo), clipboard, indentation plugins
-- **Dark theme by default** with toggle button (persists to localStorage)
-- Sidebar with Notes/Projects/Daily/Calendar sections + task counts
-- Search panel (Ctrl+K)
-- **Dashboard view** (home page) — all projects as cards with active task summaries
-  - Click project to navigate, click task to open detail
-  - Shows active/backlog/overdue counts per project
-- **Split-panel Task view** with:
-  - Task list (Active/Backlog/Completed sections)
-  - Task detail editor with markdown descriptions
-  - Preview toggle for rendered markdown
-  - Active/Backlog toggle button
-  - **Due date picker** — inline date input to set/clear due dates
-  - Due date display with color-coded urgency
-  - **Tag system** — add/remove tags with autocomplete from project tags
-  - **Tag filter bar** — click tags to filter task list
-  - **Subtasks** — expandable subtasks under parent tasks, add subtask inline
-  - **Recurrence picker** — set daily/weekly/monthly/yearly recurrence
-  - **Task comments** — date-stamped comments section in task detail, newest first, add/delete
-  - **Last comment summary** — most recent comment shown in task list and dashboard cards
-  - Inline title editing (double-click)
-- **Calendar view** — month grid showing tasks by due date + recurring task expansion
-  - Tasks with due dates plotted on calendar cells
-  - **Recurring tasks expanded** — daily/weekly/monthly/yearly tasks shown on computed occurrences
-  - Recurring occurrences use anchor date (`due_date` or `created`), respect `recurrence_interval`
-  - Recurring entries shown with dashed border and ↻ icon to distinguish from regular tasks
-  - Daily notes shown as blue dots
-  - Color-coded urgency (overdue, today, soon)
-  - Month navigation + Today button
-  - Click task to navigate to detail, click date to open daily note
-- **Split-panel Notes view** (per project)
-- **Git panel** — slide-out panel with:
-  - Commit history with expandable diffs
-  - Working directory changes with line-by-line diff
-  - Custom commit messages (Ctrl+Enter to commit)
-  - Push/Fetch buttons with ahead/behind indicators
-  - File status icons (added/modified/deleted/renamed)
-- Git status indicator in sidebar (click to open panel)
-- WebSocket real-time updates
-- File lock banners (read-only mode when locked)
-- Conflict warning banner
-- Fullscreen layout (uses all available space)
-
-### API Endpoints
-```
-GET/POST    /api/notes
-GET/PUT/DEL /api/notes/:id
-GET/POST    /api/projects
-GET/PUT     /api/projects/:id
-GET/PUT     /api/projects/:id/content
-
-# Project Notes (file-based)
-GET/POST    /api/projects/:id/notes
-GET/PUT/DEL /api/projects/:id/notes/:note_id
-
-# Project Tasks (file-based, each task is a .md file)
-GET/POST    /api/projects/:id/tasks
-GET/PUT/DEL /api/projects/:id/tasks/:task_id
-PUT         /api/projects/:id/tasks/:task_id/toggle
-PUT         /api/projects/:id/tasks/:task_id/meta
-POST        /api/projects/:id/tasks/:task_id/comments
-DELETE      /api/projects/:id/tasks/:task_id/comments/:index
-
-GET         /api/tasks              # All tasks across projects
-GET         /api/daily
-GET         /api/daily/today
-GET/POST    /api/daily/:date
-POST        /api/assets/upload
-GET         /api/assets/:project/:file
-GET         /api/search?q=
-GET         /api/git/status
-POST        /api/git/commit
-POST        /api/git/push
-GET         /api/git/conflicts
-GET         /api/git/log              # Commit history (limit param)
-GET         /api/git/diff             # Working directory diff
-GET         /api/git/diff/:commit_id  # Diff for specific commit
-GET         /api/git/remote           # Remote repository info
-POST        /api/git/fetch            # Fetch from remote
-WS          /ws
-```
-
----
-
-## Implemented in Phase 3
-
-- CodeMirror 6 editor with markdown syntax highlighting
-- Markdown preview with split view
-- Vue Router for navigation (`/`, `/projects/:id`, `/projects/:id/tasks`, `/calendar`, `/daily`)
-- Pinia state management (notes, projects, tasks, ui, websocket, git stores)
-- Project-specific task view with toggle and add functionality
-- File locking via WebSocket (Task View vs Editor)
-- Daily notes (`data/daily/`) with templates
-- Assets upload API (`/api/assets/upload`, `/api/assets/:project/:file`)
-- Git push and conflict detection (`/api/git/push`, `/api/git/conflicts`)
-
----
-
-## Implemented in Phase 4
-
-- **File-based tasks** — each task is a separate markdown file with YAML frontmatter
-  - Supports rich text descriptions with images
-  - New fields: `due_date`, `is_active`
-  - Task files stored in `projects/{id}/tasks/task-YYYYMMDD-HHMMSS.md`
-- **Split-panel task view** — list on left, detail editor on right
-- **Markdown preview toggle** — side-by-side raw/rendered view
-- **Active/Backlog toggle** — button to move tasks between states
-- **Project notes** — separate notes folder per project with split-panel view
-- **Stable list sorting** — sorted by created date (not updated)
-- **Backend API-only mode** — no frontend serving, no browser auto-open
-- **Fullscreen layout** — uses all available browser space
-
----
-
-## Known Issues / Technical Debt
-
-1. **Project index note ID format**: Project notes use `{slug}-index` as their ID (e.g., `ferrite-index`). Projects created before this fix have incorrect IDs in frontmatter.
-
-2. **Axum nested route limitation**: Path parameters from parent routes are NOT automatically available in nested route handlers. Project task routes use explicit routes instead of `.nest()`.
-
-3. **Some warnings remain**: Unused methods in `locks.rs` and `git.rs` (reserved for future use).
-
----
-
-## Implemented in Phase 5
-
-- **Dashboard view** — cross-project home page with task summaries per project
-- **Tags system** — per-task tags stored in frontmatter, filter bar in task list, autocomplete
-- **Subtasks** — tasks with `parent_id`, grouped under parents in list, inline creation
-- **Recurring tasks** — daily/weekly/monthly/yearly with auto-creation on completion
-- **Calendar view** — month grid with tasks by due date + daily note indicators
-- **Due date picker** — inline date input in task detail panel
-- **Clickable app title** — "Ironpad" navigates to dashboard
-
----
-
-## Implemented in Phase 6
-
-- **Recurring tasks on calendar** — frontend expands daily/weekly/monthly/yearly tasks into the visible month grid
-  - Anchor date: `due_date` if set, otherwise `created`; respects `recurrence_interval`
-  - Deduplicates against regular due-date entries; visual indicator (dashed border, ↻ icon)
-- **System tray mode** — production binary runs in system tray (Windows, macOS, Linux)
-  - `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` hides console on Windows
-  - Server on background thread, tray event loop on main thread (cross-platform safe)
-  - Tray menu: "Open in Browser" / "Quit"
-  - Uses `tray-item` crate with platform-specific icon loading (`windows-sys` on Windows)
-  - Development mode unchanged (no tray, API-only)
-
----
-
-## Not Yet Implemented (Phase 7+)
-
-- UI polish and animations
-- Responsive sidebar
-- Global hotkey (Ctrl+Shift+Space)
-- Backlinks between notes
-- Graph view
-- Export (PDF / HTML)
-- Custom themes
-- Tantivy search (if >5000 notes)
-- Production packaging (Tauri or similar)
-- Task dependencies (blocked by)
-- Time estimates on tasks
-- Calendar drag-and-drop rescheduling
-- Week/day calendar views
-
----
-
-## Key Technical Decisions
+### Key Technical Decisions
 
 | Decision | Choice |
 |----------|--------|
@@ -276,92 +96,190 @@ WS          /ws
 | Search | ripgrep CLI, fallback to manual |
 | Frontmatter | serde_yaml, auto-generated IDs |
 | Editor | Milkdown (WYSIWYG ProseMirror-based) |
-| Editor Legacy | CodeMirror 6 (MarkdownEditor.vue, kept for reference) |
 | State management | Pinia stores |
 | Routing | Vue Router (history mode) |
 | File locking | WebSocket-based, per-client locks |
 | Project note ID | `{slug}-index` format |
 | Task storage | Individual .md files in `tasks/` folder |
-| List sorting | By created date (stable, not affected by edits) |
+| List sorting | By created date (stable) |
 | Backend mode | API-only (dev); frontend-serving + system tray (production) |
 | Theme | Dark by default, toggle to light, persists to localStorage |
-| Tags | YAML sequence in frontmatter, project-scoped filtering |
-| Subtasks | Separate task files with `parent_id` field linking to parent |
-| Recurring tasks | On completion, backend auto-creates next instance with advanced due date |
-| Calendar | Pure frontend month grid, tasks by `due_date` + recurring expansion |
-| System tray | `tray-item` crate; main thread tray, background thread server; `windows-sys` for icon on Windows |
-| Task comments | YAML sequence in frontmatter, date-stamped, last comment as list/dashboard summary |
-| Dashboard | Home route `/`, loads all projects + all tasks for cross-project summary |
 
 ---
 
-## Critical: Milkdown Editor Lifecycle
+## Critical Patterns
 
-The Milkdown editor requires careful handling when switching between notes/tasks:
+### Milkdown Editor Lifecycle
 
-**Components:**
-- `MilkdownEditor.vue` — Wrapper with `:key` prop for recreation
-- `MilkdownEditorCore.vue` — Actual editor using `useEditor` hook from `@milkdown/vue`
+The editor requires careful handling when switching content:
 
-**Pattern for switching content:**
 ```javascript
-// Views use a separate editorKey ref (not the noteId/taskId directly)
-// Content MUST be set BEFORE updating editorKey
-
 // CORRECT order:
-editorContent.value = loadedContent  // Set content first
-editorKey.value = noteId             // Then trigger editor recreation
+editorContent.value = loadedContent  // 1. Set content first
+editorKey.value = noteId             // 2. Recreate editor
 
 // WRONG order (causes stale content):
-editorKey.value = noteId             // Editor recreates with empty/stale defaultValue
-editorContent.value = loadedContent  // Too late - editor already initialized
+editorKey.value = noteId             // Editor recreates with empty/stale content
+editorContent.value = loadedContent  // Too late!
 ```
 
-**Why:** The editor uses `defaultValue` from props at creation time. If the key changes before content is set, the editor initializes with wrong content and `replaceAll()` updates may fail during the async initialization window.
+**Why:** The editor uses `defaultValue` from props at creation time. State in `MilkdownEditorCore` must be refs, not module-level variables.
 
-**State in MilkdownEditorCore must be refs, not module-level variables** — ensures clean state on component recreation.
+### Crepe Raw Reference (Vue Proxy Workaround)
+
+Milkdown's `Crepe` class uses ES private fields (`#editor`). Vue's reactive proxy breaks getter access to these fields because `this` becomes the proxy. Always use the raw reference stored at creation time:
+
+```javascript
+let crepeRaw: Crepe | null = null
+
+// In useEditor factory - store BEFORE Vue can wrap it:
+crepeRaw = crepe
+
+// CORRECT: use raw reference for programmatic updates
+crepeRaw.editor.action(replaceAll(newContent))
+
+// WRONG: get() returns a proxy-wrapped instance
+const crepe = get()
+crepe.editor.action(...)  // Fails - proxy can't access #editor
+```
+
+If the raw reference also fails, `MilkdownEditor.vue` supports a `force-remount` event that increments an internal key, destroying and recreating the editor with updated content.
+
+### Note ID vs Filename
+
+Project notes have two identifiers:
+- **Filename**: `20260227-153000` (used in routes and file paths)
+- **Frontmatter ID**: `ironpad-20260227-153000` (used in link targets and backlink index)
+
+When querying the backlinks API, always pass the **frontmatter ID** (`selectedNote.id`), not the filename (`currentNoteId`).
+
+### Atomic File Writes
+
+```rust
+// Pattern used in filesystem service
+let temp = path.with_extension("tmp");
+fs::write(&temp, content)?;
+fs::rename(temp, path)?;  // Atomic on most filesystems
+```
 
 ---
 
-## Development Commands
+## API Summary
+
+Key endpoints (see `docs/API.md` for complete reference):
+
+```
+Projects:   GET/POST    /api/projects
+           GET/PUT     /api/projects/:id
+           GET/PUT     /api/projects/:id/content
+
+Tasks:      GET/POST    /api/projects/:id/tasks
+           GET/PUT/DEL /api/projects/:id/tasks/:task_id
+           PUT         /api/projects/:id/tasks/:task_id/toggle
+           PUT         /api/projects/:id/tasks/:task_id/meta
+           POST/DEL    /api/projects/:id/tasks/:task_id/comments
+
+Notes:      GET/POST    /api/projects/:id/notes
+           GET/PUT/DEL /api/projects/:id/notes/:note_id
+           GET         /api/projects/:id/notes-titles
+           GET         /api/projects/:id/notes-search
+
+Backlinks:  GET         /api/backlinks/notes/:id/links
+           GET         /api/backlinks/notes/:id/backlinks
+           GET         /api/backlinks/notes/:id/forward-links
+           POST        /api/backlinks/links/rebuild
+           GET         /api/backlinks/links/stats
+
+Prompts:    GET/POST    /api/prompts
+           GET/PUT/DEL /api/prompts/:id
+           GET         /api/prompts/folders
+           GET         /api/prompts/search/semantic?q=
+
+Daily:      GET/POST    /api/daily/:date
+           GET         /api/daily/today
+
+Git:        GET         /api/git/status
+           POST        /api/git/commit
+           POST        /api/git/push
+           GET         /api/git/log
+           GET         /api/git/diff
+
+WebSocket:  WS          /ws
+```
+
+---
+
+## Known Issues / Technical Debt
+
+1. **Axum nested route limitation**: Path parameters from parent routes are NOT automatically available in nested route handlers. Project task routes use explicit routes instead of `.nest()`.
+
+2. **Some warnings remain**: Unused methods in `locks.rs` and `git.rs` (reserved for future use).
+
+---
+
+## Completed (v0.3.0)
+
+- [x] **Task time estimates** — `estimated_minutes` field for workload planning
+- [x] **Quick-add task** — Global floating button to create tasks from any view (Ctrl+Shift+A)
+- [x] **Priority colors** — Visual color indicators (High=red, Medium=yellow, Low=gray)
+- [x] **Backlinks between notes** — `/link` slash command, BacklinksPanel, link index with API
+
+## In Progress (v0.4.0)
+
+See `ROADMAP.md` for v0.4.0 planning.
+
+---
+
+## Planned (Post v0.3.0)
+
+- UI polish and animations
+- Responsive sidebar
+- Global hotkey (Ctrl+Shift+Space)
+- Graph view of note connections
+- Export (PDF / HTML)
+- Custom themes
+- Tantivy search (if >5000 notes)
+- Task dependencies (blocked by)
+- Sort task list by due date / priority
+- Overdue indicator in sidebar and dashboard
+
+---
+
+## Development
 
 ```bash
 # Backend (from backend/)
-cargo run              # API server on :3000 (no GUI)
+cargo run              # API server on :3000
 
 # Frontend (from frontend/)
-npm run dev            # Dev server on :5173 (connects to backend on :3000)
+npm run dev            # Dev server on :5173
 npm run build          # Build to dist/
-
-# Development: Run both backend and frontend separately
-# Backend is API-only, does not serve frontend
 ```
 
----
-
-## Documentation
-
-For detailed information, see:
-
-| Document | Description |
-|----------|-------------|
-| `/README.md` | Project overview, quick start, installation |
-| `/frontend/README.md` | Frontend architecture, component structure, Milkdown editor patterns |
-| `/docs/ARCHITECTURE.md` | System design, service layer, data models, security considerations |
-| `/docs/API.md` | Complete REST API reference with examples |
-| `/HANDOVER.md` | Session handover notes, recent fixes, context for continuing work |
-| `/CHECKLIST.md` | Current implementation status and progress |
-| `/PRD.md` | Full product requirements document |
+**Environment:**
+- Windows + PowerShell
+- Rust 2021 edition
+- Branch: `master`
 
 ---
 
-## Rules for AI
+## Documentation Index
 
+See `docs/index.md` for complete documentation guide.
+
+Key docs:
+- `docs/API.md` — Complete REST API reference
+- `docs/ARCHITECTURE.md` — System design and technical details
+- `HANDOVER.md` — Session handover notes and next tasks
+- `ROADMAP.md` — Feature roadmap and release planning
+- `CHANGELOG.md` — Version history and completed work
+
+---
+
+## AI Rules
+
+- Follow existing code patterns and conventions
+- Use Context7 MCP tool to fetch library documentation when needed
 - Prefer incremental, verifiable changes
 - File system is source of truth
 - No databases, no cloud services
-- Windows + PowerShell environment
-- Rust 2021 edition
-- Check CHECKLIST.md for current status
-- Check PRD.md for full requirements
-- Check HANDOVER.md for recent session context

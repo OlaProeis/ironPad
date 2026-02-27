@@ -1,6 +1,47 @@
 # Ironpad Roadmap
 
-## Release 0.2.0 (Current)
+## Release 0.3.0 (Current)
+
+### Features
+
+#### 1. Prompt Manager (global + project)
+- Dedicated **Prompts** section in project navigation
+- Top-right quick access button for **Global Prompts**
+- File-based storage:
+  - `data/prompts/` for global prompts
+  - `data/projects/{id}/prompts/` for project prompts
+- Prompt metadata via frontmatter (folder, tags, scope, description)
+
+#### 2. Prompt library UX
+- Folder and tag filtering in the library panel
+- Collapsible filters to reduce sidebar vertical space
+- Prompt CRUD + duplicate actions
+- Prompt-level Git history and diff browsing
+
+#### 3. Prompt variables and rendered copy
+- Placeholder variables via `{{variable_name}}`
+- Auto-detected variable input form
+- **Copy raw** and **Copy rendered** actions
+- Live rendered preview panel
+
+#### 4. Calendar improvements
+- **Drag-and-drop rescheduling** -- drag tasks to new dates to change due dates
+- **Week view** -- 7-day horizontal layout for denser task planning
+- **Day view** -- single date focus with expanded task list
+- View mode toggle (Month/Week/Day) with appropriate navigation for each mode
+
+#### 5. Backlinks between notes
+- `/link` slash command triggers searchable note picker dropdown
+- Inserts standard markdown links: `[Note Title](note-id)`
+- **BacklinksPanel** displays forward links and incoming backlinks per note
+- Click-to-navigate from link panel to target note
+- Backend link index (in-memory, rebuilt on save and file watcher events)
+- Backlinks API (`/api/backlinks/notes/:id/links`, rebuild, stats)
+- Project-scoped note title endpoints for autocomplete
+
+---
+
+## Release 0.2.0 (Released)
 
 ### Features
 
@@ -33,10 +74,10 @@
 Ideas that fit the current architecture and local-first design:
 
 ### High fit (0.3.x)
-- **Calendar drag-and-drop** -- reschedule tasks by dragging onto a new date
-- **Week / day calendar views** -- alternative to month view for denser task planning
-- **Sort task list by due date / priority** -- alongside current created-date sorting
-- **Overdue indicator** -- clearer overdue badge or count in sidebar and dashboard
+- [x] **Calendar drag-and-drop** -- reschedule tasks by dragging onto a new date
+- [x] **Week / day calendar views** -- alternative to month view for denser task planning
+- [ ] **Sort task list by due date / priority** -- alongside current created-date sorting
+- [ ] **Overdue indicator** -- clearer overdue badge or count in sidebar and dashboard
 
 ### Medium fit (0.4.x)
 - **Quick-add task** -- global or dashboard shortcut to create a task without opening a project
@@ -48,7 +89,6 @@ Ideas that fit the current architecture and local-first design:
 - UI polish and subtle animations
 - Responsive sidebar / mobile-friendly layout
 - Global hotkey (e.g. Ctrl+Shift+Space)
-- Backlinks between notes
 - Graph view of note connections
 - Export to PDF / HTML
 - Custom themes
@@ -58,7 +98,8 @@ Ideas that fit the current architecture and local-first design:
 
 ## Version history
 
-| Version | Status   | Date       | Notes                                                    |
-|---------|----------|------------|----------------------------------------------------------|
-| 0.1.0   | Released | 2025-12-01 | First public release, core features in place             |
-| 0.2.0   | Current  | 2026-02-16 | Comments, recurring calendar, system tray, app branding  |
+| Version | Status   | Date       | Notes                                                               |
+|---------|----------|------------|---------------------------------------------------------------------|
+| 0.1.0   | Released | 2025-12-01 | First public release, core features in place                        |
+| 0.2.0   | Released | 2026-02-16 | Comments, recurring calendar, system tray, app branding             |
+| 0.3.0   | Current  | 2026-02-27 | Prompt Manager, calendar improvements, backlinks, Git history |

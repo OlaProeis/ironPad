@@ -434,6 +434,79 @@ pub fn get_log(limit: Option<usize>) -> Result<Vec<CommitDetail>, String> {
     Ok(commits)
 }
 
+/// Get commit history that touched a specific file path (most recent first).
+pub fn get_log_for_path(path: &str, limit: Option<usize>) -> Result<Vec<CommitDetail>, String> {
+    let data_path = config::data_dir();
+    let repo = Repository::open(data_path).map_err(|e| format!("Not a git repository: {}", e))?;
+
+    let normalized_path = path.replace('\\', "/").trim_start_matches('/').to_string();
+    let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
+    revwalk.push_head().map_err(|e| e.to_string())?;
+    revwalk
+        .set_sorting(git2::Sort::TIME)
+        .map_err(|e| e.to_string())?;
+
+    let max_commits = limit.unwrap_or(50);
+    let mut commits = Vec::new();
+
+    for oid_result in revwalk {
+        if commits.len() >= max_commits {
+            break;
+        }
+
+        let oid = oid_result.map_err(|e| e.to_string())?;
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+
+        let commit_tree = commit.tree().ok();
+        let parent_tree = if commit.parent_count() > 0 {
+            commit.parent(0).ok().and_then(|p| p.tree().ok())
+        } else {
+            None
+        };
+
+        let Some(ct) = commit_tree else {
+            continue;
+        };
+
+        let diff = repo
+            .diff_tree_to_tree(parent_tree.as_ref(), Some(&ct), None)
+            .map_err(|e| e.to_string())?;
+
+        let mut touched = false;
+        let mut files_changed = 0usize;
+        for delta in diff.deltas() {
+            files_changed += 1;
+            let candidate = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            if candidate == normalized_path {
+                touched = true;
+            }
+        }
+        if !touched {
+            continue;
+        }
+
+        let timestamp = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        commits.push(CommitDetail {
+            id: oid.to_string(),
+            short_id: oid.to_string()[..8].to_string(),
+            message: commit.message().unwrap_or("").trim().to_string(),
+            author: commit.author().name().unwrap_or("Unknown").to_string(),
+            timestamp,
+            files_changed,
+        });
+    }
+
+    Ok(commits)
+}
+
 /// Helper to count entries in a tree recursively
 fn count_tree_entries(tree: &git2::Tree) -> usize {
     tree.iter()

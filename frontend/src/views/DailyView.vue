@@ -32,7 +32,9 @@ let saveTimeout: number | null = null
 
 // Default template for daily notes
 function getDefaultTemplate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00')
+  // Parse date components directly to avoid timezone issues
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
   const formatted = date.toLocaleDateString(undefined, {
     weekday: 'long',
     year: 'numeric',
@@ -54,11 +56,22 @@ function getDefaultTemplate(dateStr: string): string {
 }
 
 function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0] as string
+  const now = new Date()
+  return formatDateToString(now)
+}
+
+// Helper to format date to YYYY-MM-DD without timezone issues
+function formatDateToString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatDateDisplay(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00')
+  // Parse date components directly to avoid timezone issues
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
   return date.toLocaleDateString(undefined, {
     weekday: 'long',
     year: 'numeric',
@@ -72,16 +85,30 @@ function goToToday() {
 }
 
 function goToPrevDay() {
-  const date = new Date(currentDate.value + 'T00:00:00')
+  // Parse the current date from the route to avoid stale computed values
+  const currentDateStr = typeof route.params.date === 'string' 
+    ? route.params.date 
+    : currentDate.value
+  
+  const [year, month, day] = currentDateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day) // Use local date components directly
   date.setDate(date.getDate() - 1)
-  const prevDate = date.toISOString().split('T')[0]
+  
+  const prevDate = formatDateToString(date)
   router.push({ name: 'daily-note', params: { date: prevDate } })
 }
 
 function goToNextDay() {
-  const date = new Date(currentDate.value + 'T00:00:00')
+  // Parse the current date from the route to avoid stale computed values
+  const currentDateStr = typeof route.params.date === 'string' 
+    ? route.params.date 
+    : currentDate.value
+  
+  const [year, month, day] = currentDateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day) // Use local date components directly
   date.setDate(date.getDate() + 1)
-  const nextDate = date.toISOString().split('T')[0]
+  
+  const nextDate = formatDateToString(date)
   router.push({ name: 'daily-note', params: { date: nextDate } })
 }
 

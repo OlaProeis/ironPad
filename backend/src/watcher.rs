@@ -7,6 +7,7 @@ use notify_debouncer_full::{new_debouncer, DebouncedEvent};
 use tokio::sync::mpsc;
 
 use crate::config;
+use crate::services::backlinks;
 use crate::websocket::{WsMessage, WsState};
 
 /// Start the file watcher in a background task
@@ -137,10 +138,30 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
         }
         EventKind::Modify(_) => {
             tracing::info!("External file modified: {}", path_str);
+            
+            // Trigger backlink index rebuild for note files
+            if is_note_file(&paths[0]) {
+                tokio::task::spawn_blocking(|| {
+                    if let Err(e) = backlinks::rebuild_link_index() {
+                        tracing::warn!("Failed to rebuild backlink index: {}", e);
+                    }
+                });
+            }
+            
             Some(WsMessage::FileModified { path: path_str })
         }
         EventKind::Remove(_) => {
             tracing::info!("External file deleted: {}", path_str);
+            
+            // Trigger backlink index rebuild when notes are deleted
+            if is_note_file(&paths[0]) {
+                tokio::task::spawn_blocking(|| {
+                    if let Err(e) = backlinks::rebuild_link_index() {
+                        tracing::warn!("Failed to rebuild backlink index: {}", e);
+                    }
+                });
+            }
+            
             Some(WsMessage::FileDeleted { path: path_str })
         }
         _ => None,
@@ -149,6 +170,52 @@ fn process_event(event: &DebouncedEvent, ws_state: &WsState) {
     if let Some(msg) = msg {
         ws_state.broadcast(msg);
     }
+}
+
+/// Check if a path is a note file (not tasks, prompts, etc.)
+fn is_note_file(path: &Path) -> bool {
+    let path_str = path.to_string_lossy();
+    
+    // Must be a markdown file
+    if path.extension().and_then(|s| s.to_str()) != Some("md") {
+        return false;
+    }
+
+    // Skip task files (contain "tasks/" in path)
+    if path_str.contains("tasks") && !path_str.contains("notes") {
+        return false;
+    }
+
+    // Skip prompt files (contain "prompts/" in path)
+    if path_str.contains("prompts") {
+        return false;
+    }
+
+    // Include notes folder files
+    if path_str.contains("notes") && !path_str.contains("archive") {
+        return true;
+    }
+
+    // Include project index.md files
+    if path_str.contains("projects")
+        && path.file_name().and_then(|s| s.to_str()) == Some("index.md")
+    {
+        return true;
+    }
+
+    // Include root-level files (index.md, inbox.md)
+    if let Some(parent) = path.parent() {
+        if parent == config::data_dir() {
+            return true;
+        }
+    }
+
+    // Include daily notes
+    if path_str.contains("daily") {
+        return true;
+    }
+
+    false
 }
 
 /// Normalize path for client consumption

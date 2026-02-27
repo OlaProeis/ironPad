@@ -5,6 +5,7 @@ import { useWorkspaceStore, useGitStore } from '../stores'
 import { projectsApi } from '../api/client'
 import type { ProjectNote, ProjectNoteWithContent } from '../types'
 import MilkdownEditor from '../components/MilkdownEditor.vue'
+import BacklinksPanel from '../components/BacklinksPanel.vue'
 
 const props = defineProps<{
   id: string
@@ -29,6 +30,7 @@ const selectedNote = ref<ProjectNoteWithContent | null>(null)
 const editorContent = ref('')
 const editorLoading = ref(false)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const backlinksRefreshKey = ref(0)
 let saveTimeout: number | null = null
 
 // CRITICAL: Separate key for editor recreation - only update AFTER content is ready
@@ -59,18 +61,11 @@ async function loadNote(noteId: string) {
   try {
     selectedNote.value = await projectsApi.getNote(projectId.value, noteId)
     
-    // CRITICAL: Set content BEFORE updating editorKey
-    // This ensures when the editor recreates, it has the correct defaultValue
+    // Set content BEFORE updating editorKey so the editor recreates with correct defaultValue
     const newContent = selectedNote.value?.content ?? ''
     editorContent.value = newContent
-    console.log('[ProjectNotesView] Loaded note content, length:', newContent.length)
-    
-    // Track this as the "original" content - only save if user makes changes
     lastSavedContent.value = newContent
-    
-    // NOW update the editor key - this triggers editor recreation with correct content
     editorKey.value = noteId
-    console.log('[ProjectNotesView] Updated editorKey to:', noteId)
   } catch {
     selectedNote.value = null
     editorContent.value = ''
@@ -111,37 +106,18 @@ function clearPendingSave() {
   pendingSaveNoteId = null
 }
 
-// Save current content immediately before switching notes
 async function saveBeforeSwitch() {
   const noteIdToSave = pendingSaveNoteId
   const contentToSave = editorContent.value
   
-  console.log('[ProjectNotesView] saveBeforeSwitch called:', {
-    noteIdToSave,
-    hasSelectedNote: !!selectedNote.value,
-    contentLength: contentToSave?.length
-  })
-  
-  // Clear pending state first
   clearPendingSave()
   
-  // Only save if we had a pending save for the current note
-  if (!noteIdToSave || !selectedNote.value) {
-    console.log('[ProjectNotesView] Skipping save - no pending save or no selected note')
-    return
-  }
+  if (!noteIdToSave || !selectedNote.value) return
+  if (contentToSave === lastSavedContent.value) return
   
-  // Only save if content actually changed
-  if (contentToSave === lastSavedContent.value) {
-    console.log('[ProjectNotesView] Skipping save before switch - content unchanged')
-    return
-  }
-  
-  console.log('[ProjectNotesView] Saving content before switch:', { noteIdToSave, contentLength: contentToSave.length })
   try {
     await projectsApi.updateNote(projectId.value, noteIdToSave, contentToSave)
     lastSavedContent.value = contentToSave
-    console.log('[ProjectNotesView] Save completed successfully')
     gitStore.loadStatus()
   } catch (err) {
     console.error('[ProjectNotesView] Save failed:', err)
@@ -149,10 +125,8 @@ async function saveBeforeSwitch() {
 }
 
 function scheduleAutoSave() {
-  console.log('[ProjectNotesView] scheduleAutoSave called for note:', currentNoteId.value)
   clearPendingSave()
   saveStatus.value = 'idle'
-  // Capture the current note ID for this save operation
   pendingSaveNoteId = currentNoteId.value || null
   saveTimeout = window.setTimeout(saveNoteContent, 1000)
 }
@@ -161,37 +135,27 @@ async function saveNoteContent() {
   const noteIdToSave = pendingSaveNoteId
   const contentToSave = editorContent.value
   
-  // Clear pending state
   pendingSaveNoteId = null
   saveTimeout = null
   
-  // Verify we're still on the same note - critical check to prevent overwrites
-  if (!noteIdToSave || !selectedNote.value || currentNoteId.value !== noteIdToSave) {
-    console.log('[ProjectNotesView] Skipping save - note changed:', { noteIdToSave, currentNoteId: currentNoteId.value })
-    return
-  }
-  
-  // Final check: only save if content actually changed from last saved
-  if (contentToSave === lastSavedContent.value) {
-    console.log('[ProjectNotesView] Skipping save - content unchanged from last save')
-    return
-  }
+  if (!noteIdToSave || !selectedNote.value || currentNoteId.value !== noteIdToSave) return
+  if (contentToSave === lastSavedContent.value) return
   
   try {
     saveStatus.value = 'saving'
     const savedNote = await projectsApi.updateNote(projectId.value, noteIdToSave, contentToSave)
     
-    // Only update state if we're still on the same note
     if (currentNoteId.value === noteIdToSave) {
       selectedNote.value = savedNote
       lastSavedContent.value = contentToSave
       saveStatus.value = 'saved'
+      backlinksRefreshKey.value++
       setTimeout(() => {
         if (saveStatus.value === 'saved') saveStatus.value = 'idle'
       }, 2000)
     }
     gitStore.loadStatus()
-    await loadNotes() // Refresh list to update timestamps
+    await loadNotes()
   } catch (err) {
     if (currentNoteId.value === noteIdToSave) {
       saveStatus.value = 'error'
@@ -208,8 +172,9 @@ async function saveNote() {
     selectedNote.value = await projectsApi.updateNote(projectId.value, currentNoteId.value, editorContent.value)
     lastSavedContent.value = editorContent.value
     saveStatus.value = 'saved'
+    backlinksRefreshKey.value++
     gitStore.loadStatus()
-    await loadNotes() // Refresh list to update timestamps
+    await loadNotes()
     setTimeout(() => {
       if (saveStatus.value === 'saved') saveStatus.value = 'idle'
     }, 2000)
@@ -247,17 +212,10 @@ function isSelected(note: ProjectNote) {
   return filename === currentNoteId.value
 }
 
-// Watch for content changes - ONLY save when content differs from last saved
 watch(editorContent, (newContent) => {
-  // Skip if no note loaded
-  if (!selectedNote.value) {
-    return
-  }
+  if (!selectedNote.value) return
   
-  // CRITICAL: Only schedule auto-save if content actually differs from last saved/loaded
-  // This prevents unnecessary saves when just opening a note
   if (lastSavedContent.value !== null && newContent !== lastSavedContent.value) {
-    console.log('[ProjectNotesView] Content changed from last saved, scheduling auto-save')
     scheduleAutoSave()
   }
 })
@@ -273,11 +231,7 @@ watch(projectId, () => {
 }, { immediate: true })
 
 watch(currentNoteId, async (noteId, oldNoteId) => {
-  console.log('[ProjectNotesView] currentNoteId changed:', { oldNoteId, noteId, pendingSaveNoteId })
-  
-  // Save any pending content from the previous note BEFORE switching
   if (oldNoteId && pendingSaveNoteId) {
-    console.log('[ProjectNotesView] Has pending save, calling saveBeforeSwitch')
     await saveBeforeSwitch()
   } else {
     clearPendingSave()
@@ -285,7 +239,6 @@ watch(currentNoteId, async (noteId, oldNoteId) => {
   saveStatus.value = 'idle'
   
   if (noteId) {
-    console.log('[ProjectNotesView] Loading note:', noteId)
     await loadNote(noteId)
   } else {
     selectedNote.value = null
@@ -353,6 +306,7 @@ onMounted(() => {
             placeholder="Write your note..."
           />
         </div>
+        <BacklinksPanel v-if="selectedNote" :note-id="selectedNote.id" :project-id="projectId" :refresh-key="backlinksRefreshKey" />
       </template>
 
       <template v-else-if="editorLoading">

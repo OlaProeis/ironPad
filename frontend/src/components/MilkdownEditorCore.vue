@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { watch, computed, ref, onUnmounted } from 'vue'
+import { watch, computed, ref, onUnmounted, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { Milkdown, useEditor } from '@milkdown/vue'
 import { Crepe, CrepeFeature } from '@milkdown/crepe'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { replaceAll } from '@milkdown/kit/utils'
 import { useThemeStore } from '../stores'
+import { setupLinkClickHandler } from './milkdown-link-handler'
+import LinkAutocomplete from './LinkAutocomplete.vue'
+import type { NoteTitleEntry } from '../types'
 
 // Import Crepe common styles (layout, components)
 import '@milkdown/crepe/theme/common/style.css'
@@ -15,14 +19,32 @@ import '@milkdown/crepe/theme/frame.css'
 const props = defineProps<{
   modelValue: string
   readonly?: boolean
+  projectId?: string
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'editor-ready': [editor: Crepe]
+  'force-remount': []
 }>()
 
+// Raw (non-reactive) reference to the Crepe instance.
+// Vue's reactive proxy breaks access to Crepe's private fields via getters,
+// so we keep an unwrapped reference for programmatic editor updates.
+let crepeRaw: Crepe | null = null
+
+// Reference to the editor container for click handling
+const editorContainer = ref<HTMLElement | null>(null)
+const linkAutocompleteRef = ref<HTMLElement | null>(null)
+let linkClickCleanup: (() => void) | null = null
+
 const themeStore = useThemeStore()
+const router = useRouter()
+
+// Slash command state
+const showLinkAutocomplete = ref(false)
+const linkAutocompletePosition = ref({ x: 0, y: 0 })
+
 // Use mode directly for reactivity, then compute effective theme
 const isDarkMode = computed(() => {
   const mode = themeStore.mode
@@ -35,6 +57,7 @@ const isDarkMode = computed(() => {
 // CRITICAL: Use refs for instance-scoped state that must reset when component recreates
 // These were previously module-level lets which caused stale content bugs when switching notes/tasks
 const isExternalUpdate = ref(false)
+// Store the RAW content (with wikilinks) - this represents what the parent component expects
 const currentContent = ref(props.modelValue)
 const pendingContent = ref<string | null>(null)
 const editorReady = ref(false)
@@ -43,7 +66,15 @@ const editorReady = ref(false)
 let externalUpdateTimeout: ReturnType<typeof setTimeout> | null = null
 let pendingRetryInterval: ReturnType<typeof setInterval> | null = null
 
+onMounted(() => {
+  // Setup link click handler when editor is mounted
+  if (editorContainer.value) {
+    linkClickCleanup = setupLinkClickHandler(editorContainer.value, router)
+  }
+})
+
 onUnmounted(() => {
+  crepeRaw = null
   if (externalUpdateTimeout) {
     clearTimeout(externalUpdateTimeout)
     externalUpdateTimeout = null
@@ -52,22 +83,25 @@ onUnmounted(() => {
     clearInterval(pendingRetryInterval)
     pendingRetryInterval = null
   }
+  if (linkClickCleanup) {
+    linkClickCleanup()
+    linkClickCleanup = null
+  }
 })
 
 // Try to apply pending content - called when editor might be ready
 function tryApplyPendingContent() {
   if (pendingContent.value === null) return false
-  
-  const crepe = get()
-  if (!crepe) return false
+  if (!crepeRaw) return false
   
   try {
-    const editor = (crepe as any).editor
+    const editor = crepeRaw.editor
     if (!editor || typeof editor.action !== 'function') return false
     
-    console.log('[MilkdownEditorCore] Applying pending content, length:', pendingContent.value.length)
+    const processedContent = pendingContent.value
+    
     isExternalUpdate.value = true
-    editor.action(replaceAll(pendingContent.value))
+    editor.action(replaceAll(processedContent))
     currentContent.value = pendingContent.value
     pendingContent.value = null
     editorReady.value = true
@@ -75,7 +109,6 @@ function tryApplyPendingContent() {
     if (externalUpdateTimeout) clearTimeout(externalUpdateTimeout)
     externalUpdateTimeout = setTimeout(() => { isExternalUpdate.value = false }, 50)
     
-    // Stop retry interval if running
     if (pendingRetryInterval) {
       clearInterval(pendingRetryInterval)
       pendingRetryInterval = null
@@ -88,9 +121,11 @@ function tryApplyPendingContent() {
 }
 
 const { get, loading } = useEditor((root) => {
+  const initialContent = props.modelValue
+  
   const crepe = new Crepe({
     root,
-    defaultValue: props.modelValue,
+    defaultValue: initialContent,
     features: {
       [CrepeFeature.CodeMirror]: true,
       [CrepeFeature.ListItem]: true,
@@ -101,34 +136,30 @@ const { get, loading } = useEditor((root) => {
       [CrepeFeature.Toolbar]: true,
       [CrepeFeature.Placeholder]: true,
       [CrepeFeature.Table]: true,
-      [CrepeFeature.Latex]: false, // Disable LaTeX for now
+      [CrepeFeature.Latex]: false,
     },
     featureConfigs: {
       [CrepeFeature.Placeholder]: {
-        text: 'Start writing...',
+        text: 'Start writing... Type "/" for commands',
       },
     },
   })
 
+  // Store raw reference before Vue can wrap it in a reactive proxy
+  crepeRaw = crepe
+
   // Add listener plugin for content changes
-  ;(crepe as any).editor
+  const editor = crepe.editor
+  editor
     .config((ctx: any) => {
       const listenerHandler = ctx.get(listenerCtx)
       listenerHandler.markdownUpdated((_ctx: any, markdown: string, prevMarkdown: string) => {
-        // CRITICAL: Only emit content changes if:
-        // 1. Content actually changed
-        // 2. We're not in the middle of an external update
-        // 3. Editor is ready (not still applying pending content)
-        // 4. No pending content waiting to be applied (prevents emitting stale content)
         if (markdown !== prevMarkdown && !isExternalUpdate.value && editorReady.value && pendingContent.value === null) {
-          console.log('[MilkdownEditorCore] User edit, emitting content length:', markdown.length)
           currentContent.value = markdown
           emit('update:modelValue', markdown)
-        } else if (markdown !== prevMarkdown) {
-          console.log('[MilkdownEditorCore] Content changed but not emitting:', {
-            isExternalUpdate: isExternalUpdate.value,
-            editorReady: editorReady.value,
-            hasPendingContent: pendingContent.value !== null
+          
+          nextTick(() => {
+            checkForSlashCommand(markdown, prevMarkdown)
           })
         }
       })
@@ -138,18 +169,102 @@ const { get, loading } = useEditor((root) => {
   return crepe
 })
 
+// Check if user typed "/link" to trigger the autocomplete
+function checkForSlashCommand(newMarkdown: string, prevMarkdown: string) {
+  if (showLinkAutocomplete.value || !props.projectId) return
+  
+  const hasLinkCmd = newMarkdown.match(/\/link\s*$/)
+  const hadLinkCmd = prevMarkdown.match(/\/link\s*$/)
+  
+  if (!hasLinkCmd) return
+  
+  if (hadLinkCmd && newMarkdown.length > prevMarkdown.length) {
+    const addedText = newMarkdown.substring(prevMarkdown.length)
+    if (addedText === ' ' || addedText === '\n') {
+      showLinkAutocompleteAtCursor()
+    }
+    return
+  }
+  
+  if (!hadLinkCmd && hasLinkCmd) {
+    showLinkAutocompleteAtCursor()
+  }
+}
+
+// Show link autocomplete at the current cursor position
+function showLinkAutocompleteAtCursor() {
+  if (editorContainer.value) {
+    const rect = editorContainer.value.getBoundingClientRect()
+    linkAutocompletePosition.value = {
+      x: rect.left + 20,
+      y: rect.top + 100
+    }
+  }
+  
+  showLinkAutocomplete.value = true
+}
+
+// Handle note selection from autocomplete
+function handleNoteSelect(note: NoteTitleEntry) {
+  const linkMarkdown = `[${note.title}](${note.id})`
+  
+  const currentMarkdown = currentContent.value
+  const linkIndex = currentMarkdown.lastIndexOf('/link')
+  
+  if (linkIndex < 0) {
+    showLinkAutocomplete.value = false
+    return
+  }
+  
+  const newContent = currentMarkdown.substring(0, linkIndex) + 
+                     linkMarkdown + 
+                     currentMarkdown.substring(linkIndex + 5)
+  
+  let editorUpdated = false
+  
+  // Try updating the editor view directly via the raw Crepe reference
+  if (crepeRaw) {
+    try {
+      const editor = crepeRaw.editor
+      if (editor && typeof editor.action === 'function') {
+        isExternalUpdate.value = true
+        editor.action(replaceAll(newContent))
+        currentContent.value = newContent
+        editorUpdated = true
+        
+        if (externalUpdateTimeout) clearTimeout(externalUpdateTimeout)
+        externalUpdateTimeout = setTimeout(() => { isExternalUpdate.value = false }, 50)
+      }
+    } catch {
+      editorUpdated = false
+    }
+  }
+  
+  // Emit the update to parent
+  emit('update:modelValue', newContent)
+  
+  if (!editorUpdated) {
+    // Direct update failed - signal parent to force-remount the editor.
+    // Don't set currentContent so the modelValue watcher won't skip the update.
+    emit('force-remount')
+  }
+  
+  showLinkAutocomplete.value = false
+}
+
+// Handle autocomplete cancel
+function handleAutocompleteCancel() {
+  showLinkAutocomplete.value = false
+}
+
 // Emit editor instance when ready, and apply any pending content
 watch(loading, (isLoading) => {
   if (!isLoading) {
-    const crepe = get()
-    if (crepe) {
-      emit('editor-ready', crepe as Crepe)
+    if (crepeRaw) {
+      emit('editor-ready', crepeRaw)
       
-      // Try to apply pending content - might need retries if editor not fully ready
       if (pendingContent.value !== null) {
         if (!tryApplyPendingContent()) {
-          // Editor not ready yet, start retry interval
-          console.log('[MilkdownEditorCore] Editor not ready after loading, starting retry')
           startPendingRetry()
         }
       } else {
@@ -161,22 +276,18 @@ watch(loading, (isLoading) => {
 
 // Start a retry interval for applying pending content
 function startPendingRetry() {
-  if (pendingRetryInterval) return // Already retrying
+  if (pendingRetryInterval) return
   
   let retryCount = 0
-  const maxRetries = 20 // 2 seconds max
+  const maxRetries = 20
   
   pendingRetryInterval = setInterval(() => {
     retryCount++
-    console.log('[MilkdownEditorCore] Retry attempt', retryCount, 'to apply pending content')
     
-    if (tryApplyPendingContent()) {
-      // Success - interval cleared in tryApplyPendingContent
-      return
-    }
+    if (tryApplyPendingContent()) return
     
     if (retryCount >= maxRetries) {
-      console.error('[MilkdownEditorCore] Failed to apply pending content after', maxRetries, 'retries')
+      console.warn('[MilkdownEditorCore] Failed to apply pending content after retries')
       if (pendingRetryInterval) {
         clearInterval(pendingRetryInterval)
         pendingRetryInterval = null
@@ -187,35 +298,32 @@ function startPendingRetry() {
 
 // Watch for external content changes
 watch(() => props.modelValue, async (newValue) => {
-  console.log('[MilkdownEditorCore] modelValue changed, length:', newValue?.length, 'loading:', loading.value, 'currentContent length:', currentContent.value?.length, 'editorReady:', editorReady.value)
-  
-  // If editor is still loading, store the content to apply after load
   if (loading.value) {
-    console.log('[MilkdownEditorCore] Editor loading, storing as pending content')
     pendingContent.value = newValue
     return
   }
   
-  // Skip if content hasn't actually changed
-  if (newValue === currentContent.value) {
-    console.log('[MilkdownEditorCore] Content unchanged, skipping')
-    return
-  }
+  if (newValue === currentContent.value) return
   
-  // Store new content as pending and try to apply
   pendingContent.value = newValue
   
   if (!tryApplyPendingContent()) {
-    // Editor not ready, start retry mechanism
-    console.log('[MilkdownEditorCore] Editor not ready, starting retry for new content')
     startPendingRetry()
   }
 })
 </script>
 
 <template>
-  <div :class="['crepe-editor', { 'dark-theme': isDarkMode }]">
+  <div ref="editorContainer" :class="['crepe-editor', { 'dark-theme': isDarkMode }]" style="position: relative;">
     <Milkdown />
+    <LinkAutocomplete
+      ref="linkAutocompleteRef"
+      :project-id="projectId || ''"
+      :visible="showLinkAutocomplete"
+      :anchor-position="linkAutocompletePosition"
+      @select="handleNoteSelect"
+      @cancel="handleAutocompleteCancel"
+    />
   </div>
 </template>
 

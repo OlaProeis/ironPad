@@ -327,6 +327,7 @@ pub fn archive_note(note_id: &str) -> Result<(), String> {
 /// Atomic write: write to temp file, then rename.
 /// This prevents data loss on crash or power failure.
 /// Also marks the file as recently saved to avoid triggering external edit notifications.
+/// Triggers backlink index rebuild for note files.
 pub fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
     let parent = path.parent().ok_or("Invalid path")?;
     let temp_name = format!(
@@ -347,6 +348,20 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
 
     // Rename temp file to target (atomic on most filesystems)
     fs::rename(&temp_path, path).map_err(|e| e.to_string())?;
+
+    // Trigger backlink index rebuild for note files
+    // (do this async to not block the write operation)
+    if is_note_file(path) {
+        tokio::spawn(async {
+            // Small delay to ensure the file is fully written
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            if let Err(e) = crate::services::backlinks::rebuild_link_index() {
+                tracing::warn!("Failed to rebuild backlink index after save: {}", e);
+            } else {
+                tracing::debug!("Backlink index rebuilt after note save");
+            }
+        });
+    }
 
     Ok(())
 }

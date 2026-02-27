@@ -28,6 +28,7 @@ pub struct Task {
     pub parent_id: Option<String>,
     pub recurrence: Option<String>,
     pub recurrence_interval: Option<u32>,
+    pub estimated_minutes: Option<u32>,
     pub project_id: String,
     pub path: String,
     pub created: String,
@@ -49,6 +50,7 @@ pub struct TaskWithContent {
     pub parent_id: Option<String>,
     pub recurrence: Option<String>,
     pub recurrence_interval: Option<u32>,
+    pub estimated_minutes: Option<u32>,
     pub project_id: String,
     pub path: String,
     pub created: String,
@@ -74,6 +76,7 @@ pub struct UpdateTaskMetaRequest {
     pub tags: Option<Vec<String>>,
     pub recurrence: Option<String>,
     pub recurrence_interval: Option<u32>,
+    pub estimated_minutes: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -329,6 +332,7 @@ fn extract_task_fields(fm: &serde_yaml::Mapping, path: &StdPath, project_id: &st
         parent_id: frontmatter::get_str(fm, "parent_id"),
         recurrence: frontmatter::get_str(fm, "recurrence"),
         recurrence_interval: frontmatter::get_u64(fm, "recurrence_interval").map(|v| v as u32),
+        estimated_minutes: frontmatter::get_u64(fm, "estimated_minutes").map(|v| v as u32),
         project_id: project_id.to_string(),
         path: format!("projects/{}/tasks/{}.md", project_id, filename),
         created: frontmatter::get_str_or(fm, "created", ""),
@@ -426,6 +430,7 @@ fn create_task_impl(
         parent_id: parent_id.map(String::from),
         recurrence: None,
         recurrence_interval: None,
+        estimated_minutes: None,
         project_id: project_id.to_string(),
         path: format!("projects/{}/tasks/{}.md", project_id, filename),
         created: now_str.clone(),
@@ -497,6 +502,7 @@ fn parse_task_with_content(
         parent_id: task.parent_id,
         recurrence: task.recurrence,
         recurrence_interval: task.recurrence_interval,
+        estimated_minutes: task.estimated_minutes,
         project_id: task.project_id,
         path: task.path,
         created: task.created,
@@ -757,6 +763,7 @@ fn create_recurring_task_impl(
         parent_id: None,
         recurrence: Some(recurrence.to_string()),
         recurrence_interval: Some(interval),
+        estimated_minutes: None,
         project_id: project_id.to_string(),
         path: format!("projects/{}/tasks/{}.md", project_id, filename),
         created: now_str.clone(),
@@ -831,6 +838,12 @@ fn update_task_meta_impl(
         fm.insert(
             serde_yaml::Value::from("recurrence_interval"),
             serde_yaml::Value::from(interval as u64),
+        );
+    }
+    if let Some(estimated_minutes) = meta.estimated_minutes {
+        fm.insert(
+            serde_yaml::Value::from("estimated_minutes"),
+            serde_yaml::Value::from(estimated_minutes as u64),
         );
     }
 

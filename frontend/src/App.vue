@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { 
   useNotesStore, 
   useProjectsStore, 
@@ -14,6 +15,7 @@ import { useWebSocket } from './composables/useWebSocket'
 import TopBar from './components/TopBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ConflictBanner from './components/ConflictBanner.vue'
+import QuickAddTask from './components/QuickAddTask.vue'
 
 const notesStore = useNotesStore()
 const projectsStore = useProjectsStore()
@@ -36,6 +38,26 @@ function reloadExternalEdit() {
 
 function dismissExternalEdit() {
   externalEditPath.value = null
+}
+
+// Quick Add Task modal
+const showQuickAddTask = ref(false)
+const router = useRouter()
+const route = useRoute()
+
+function openQuickAddTask() {
+  showQuickAddTask.value = true
+}
+
+function closeQuickAddTask() {
+  showQuickAddTask.value = false
+}
+
+async function onTaskCreated(taskId: string, projectId: string) {
+  // If on calendar view, refresh tasks
+  if (route.name === 'calendar') {
+    await tasksStore.loadAllTasks()
+  }
 }
 
 // Initialize theme immediately (before mount for no flash)
@@ -95,6 +117,11 @@ function handleKeydown(e: KeyboardEvent) {
       window.dispatchEvent(event)
     }
   }
+  // Ctrl/Cmd + Shift + A for quick add task
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'A') {
+    e.preventDefault()
+    openQuickAddTask()
+  }
   // Escape to close panels
   if (e.key === 'Escape') {
     uiStore.closeSearch()
@@ -148,6 +175,22 @@ onUnmounted(() => {
         <router-view />
       </main>
     </div>
+
+    <!-- Floating Quick Add Button -->
+    <button
+      class="floating-add-btn"
+      @click="openQuickAddTask"
+      title="Quick add task (Ctrl+Shift+A)"
+    >
+      +
+    </button>
+
+    <!-- Quick Add Task Modal -->
+    <QuickAddTask
+      :visible="showQuickAddTask"
+      @close="closeQuickAddTask"
+      @created="onTaskCreated"
+    />
   </div>
 </template>
 
@@ -304,6 +347,41 @@ button.danger:hover {
   background: var(--color-danger);
   border-color: var(--color-danger);
   color: white;
+}
+
+/* Floating Quick Add Button */
+.floating-add-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: none;
+  color: white;
+  font-size: 28px;
+  font-weight: 300;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.floating-add-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  background: var(--color-primary);
+  opacity: 1;
+}
+
+.floating-add-btn:active {
+  transform: scale(0.98);
 }
 
 input[type="text"],

@@ -28,15 +28,15 @@ This document describes the technical architecture of Ironpad.
 │  │                    Axum Router                               ││
 │  │  ┌─────────────────────────────────────────────────────────┐││
 │  │  │                    Routes                                │││
-│  │  │  /api/notes  /api/projects  /api/tasks  /api/git  /ws   │││
+│  │  │  /notes /projects /tasks /backlinks /git /prompts /ws   │││
 │  │  └───────────────────────────┬─────────────────────────────┘││
 │  └──────────────────────────────┼───────────────────────────────┘│
 │                                 │                                │
 │  ┌──────────────────────────────▼───────────────────────────────┐│
 │  │                      Services                                 ││
-│  │  ┌──────────┐  ┌───────────┐  ┌──────┐  ┌───────┐  ┌──────┐ ││
-│  │  │Filesystem│  │Frontmatter│  │ Git  │  │Search │  │Locks │ ││
-│  │  └────┬─────┘  └─────┬─────┘  └──┬───┘  └───┬───┘  └──┬───┘ ││
+│  │  ┌──────────┐ ┌───────────┐ ┌─────┐ ┌──────┐ ┌─────┐ ┌─────────┐││
+│  │  │Filesystem│ │Frontmatter│ │ Git │ │Search│ │Locks│ │Backlinks│││
+│  │  └────┬─────┘ └─────┬─────┘ └──┬──┘ └──┬───┘ └──┬──┘ └────┬───┘││
 │  └───────┼──────────────┼───────────┼──────────┼─────────┼──────┘│
 │          │              │           │          │         │       │
 │          └──────────────┴─────┬─────┴──────────┴─────────┘       │
@@ -105,6 +105,7 @@ The application works fully offline:
 
 ```
 services/
+├── backlinks.rs    # Link extraction, in-memory index, queries
 ├── filesystem.rs   # File read/write operations
 ├── frontmatter.rs  # YAML parsing/generation
 ├── git.rs          # Git CLI wrapper
@@ -156,6 +157,27 @@ impl GitService {
 ```
 
 Auto-commit runs every 60 seconds when changes exist.
+
+#### Backlinks Service
+
+Maintains an in-memory link index across all notes. See [`backlinks.md`](./backlinks.md) for full details.
+
+```rust
+// Global state (Lazy<Arc<Mutex<...>>>)
+LINK_INDEX:  HashMap<target_id, Vec<NoteLink>>  // who links to whom
+NOTE_TITLES: HashMap<note_id, title>             // title lookup
+
+// Key operations
+fn rebuild_link_index() -> Result<usize>;     // full scan of data/
+fn update_note_links(note_id, content);       // called on save (triggers full rebuild)
+fn get_backlinks(note_id) -> Vec<Backlink>;   // notes linking TO this note
+fn get_forward_links(note_id) -> Vec<ForwardLink>; // notes this note links TO
+```
+
+The index is rebuilt:
+- **On startup** — initial scan of all markdown files.
+- **On note save** — `update_project_note` calls `update_note_links()`.
+- **On external file change** — file watcher triggers rebuild for note files.
 
 ### WebSocket System
 
@@ -218,6 +240,10 @@ App.vue
     ├── NotesView.vue
     ├── ProjectView.vue
     ├── ProjectNotesView.vue
+    │   ├── MilkdownEditor.vue
+    │   │   └── MilkdownEditorCore.vue
+    │   │       └── LinkAutocomplete.vue
+    │   └── BacklinksPanel.vue
     ├── TasksView.vue
     └── DailyView.vue
 ```
@@ -245,8 +271,9 @@ export const useNotesStore = defineStore('notes', () => {
 The editor uses a two-component architecture:
 
 ```
-MilkdownEditor.vue (wrapper)
-└── MilkdownEditorCore.vue (actual editor)
+MilkdownEditor.vue (wrapper — manages key for remounts)
+└── MilkdownEditorCore.vue (actual editor — Crepe instance, /link detection)
+    └── LinkAutocomplete.vue (note picker dropdown for /link command)
 ```
 
 **Critical Lifecycle:**
@@ -256,7 +283,7 @@ MilkdownEditor.vue (wrapper)
 3. `Crepe.editor` is the ProseMirror editor
 4. `editor.action(replaceAll(content))` updates content
 
-**Key Pattern:** Content must be set BEFORE the editor key changes:
+**Key Pattern 1:** Content must be set BEFORE the editor key changes:
 
 ```javascript
 // View component
@@ -268,6 +295,25 @@ watch(noteId, async (newId) => {
   editorKey.value = newId             // 2. Recreate editor
 })
 ```
+
+**Key Pattern 2:** Always use a raw Crepe reference for programmatic updates:
+
+```javascript
+// Crepe uses ES private fields — Vue's proxy breaks getter access.
+let crepeRaw: Crepe | null = null
+
+// Store before Vue wraps it:
+const { get, loading } = useEditor((root) => {
+  const crepe = new Crepe({ root, ... })
+  crepeRaw = crepe  // raw reference
+  return crepe
+})
+
+// Use raw reference (not get()) for action calls:
+crepeRaw.editor.action(replaceAll(newContent))
+```
+
+If the direct update fails, `MilkdownEditor.vue` supports a `force-remount` event that increments an internal key, destroying and recreating the editor with the current model value.
 
 ### Auto-save System
 
@@ -454,7 +500,6 @@ Current design handles ~5000 files comfortably. For larger datasets:
 See `ai-context.md` for planned features:
 
 - Tag extraction and filtering
-- Backlinks between notes
-- Graph view
+- Graph view of note connections (builds on the backlinks index)
 - Export (PDF/HTML)
 - Custom themes

@@ -16,7 +16,16 @@ import type {
   DiffInfo,
   RemoteInfo,
   DailyNote,
-  Comment
+  Prompt,
+  PromptSummary,
+  PromptFolder,
+  PromptSearchResult,
+  NoteLinksResponse,
+  NoteTitleEntry,
+  Backlink,
+  ForwardLink,
+  ProjectNotesTitlesResponse,
+  ProjectNotesSearchResponse
 } from '../types'
 
 const API_BASE = '/api'
@@ -101,7 +110,14 @@ export const projectsApi = {
   deleteNote: (projectId: string, noteId: string) =>
     request<void>(`/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`, {
       method: 'DELETE'
-    })
+    }),
+
+  // Link selection endpoints for slash command
+  getNotesTitles: (projectId: string) =>
+    request<ProjectNotesTitlesResponse>(`/projects/${encodeURIComponent(projectId)}/notes-titles`),
+
+  searchNotes: (projectId: string, query: string, limit = 10) =>
+    request<ProjectNotesSearchResponse>(`/projects/${encodeURIComponent(projectId)}/notes-search?q=${encodeURIComponent(query)}&limit=${limit}`)
 }
 
 // Tasks API (file-based tasks)
@@ -140,7 +156,7 @@ export const tasksApi = {
     }),
   
   // Update task metadata
-  updateMeta: (projectId: string, taskId: string, meta: { title?: string; section?: string; priority?: string; due_date?: string; is_active?: boolean; tags?: string[]; recurrence?: string; recurrence_interval?: number }) =>
+  updateMeta: (projectId: string, taskId: string, meta: { title?: string; section?: string; priority?: string; due_date?: string; is_active?: boolean; tags?: string[]; recurrence?: string; recurrence_interval?: number; estimated_minutes?: number }) =>
     request<Task>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/meta`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -174,6 +190,78 @@ export const searchApi = {
     request<SearchResult[]>(`/search?q=${encodeURIComponent(query)}`)
 }
 
+// Prompts API
+export const promptsApi = {
+  list: (params?: { scope?: string; project_id?: string; folder?: string; tag?: string; q?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.scope) query.set('scope', params.scope)
+    if (params?.project_id) query.set('project_id', params.project_id)
+    if (params?.folder) query.set('folder', params.folder)
+    if (params?.tag) query.set('tag', params.tag)
+    if (params?.q) query.set('q', params.q)
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return request<PromptSummary[]>(`/prompts${suffix}`)
+  },
+
+  get: (id: string) => request<Prompt>(`/prompts/${encodeURIComponent(id)}`),
+
+  create: (payload: {
+    scope?: string
+    project_id?: string
+    title?: string
+    folder?: string
+    tags?: string[]
+    description?: string
+    content?: string
+  }) =>
+    request<Prompt>('/prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }),
+
+  update: (id: string, payload: {
+    title?: string
+    folder?: string
+    tags?: string[]
+    description?: string
+    content?: string
+  }) =>
+    request<Prompt>(`/prompts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/prompts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  folders: (params?: { scope?: string; project_id?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.scope) query.set('scope', params.scope)
+    if (params?.project_id) query.set('project_id', params.project_id)
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return request<PromptFolder[]>(`/prompts/folders${suffix}`)
+  },
+
+  semanticSearch: (params: {
+    q: string
+    scope?: string
+    project_id?: string
+    folder?: string
+    tag?: string
+    limit?: number
+  }) => {
+    const query = new URLSearchParams({ q: params.q })
+    if (params.scope) query.set('scope', params.scope)
+    if (params.project_id) query.set('project_id', params.project_id)
+    if (params.folder) query.set('folder', params.folder)
+    if (params.tag) query.set('tag', params.tag)
+    if (params.limit) query.set('limit', String(params.limit))
+    return request<PromptSearchResult[]>(`/prompts/search/semantic?${query.toString()}`)
+  }
+}
+
 // Git API
 export const gitApi = {
   status: () => request<GitStatus>('/git/status'),
@@ -192,6 +280,12 @@ export const gitApi = {
   // Commit history
   log: (limit?: number) => 
     request<CommitDetail[]>(`/git/log${limit ? `?limit=${limit}` : ''}`),
+
+  // Commit history filtered by file path
+  logByPath: (path: string, limit?: number) =>
+    request<CommitDetail[]>(
+      `/git/log/file?path=${encodeURIComponent(path)}${limit ? `&limit=${limit}` : ''}`
+    ),
   
   // Working directory diff (uncommitted changes)
   diff: () => request<DiffInfo>('/git/diff'),
@@ -252,4 +346,44 @@ export const assetsApi = {
   
   getUrl: (project: string, filename: string) => 
     `${API_BASE}/assets/${encodeURIComponent(project)}/${encodeURIComponent(filename)}`
+}
+
+// Backlinks API
+export const backlinksApi = {
+  // Get both backlinks and forward links for a note
+  getLinks: (noteId: string) =>
+    request<NoteLinksResponse>(`/backlinks/notes/${encodeURIComponent(noteId)}/links`),
+
+  // Get only backlinks (notes that link TO this note)
+  getBacklinks: (noteId: string) =>
+    request<{ note_id: string; backlinks: Backlink[]; count: number }>(
+      `/backlinks/notes/${encodeURIComponent(noteId)}/backlinks`
+    ),
+
+  // Get only forward links (notes this note links TO)
+  getForwardLinks: (noteId: string) =>
+    request<{ note_id: string; forward_links: ForwardLink[]; count: number }>(
+      `/backlinks/notes/${encodeURIComponent(noteId)}/forward-links`
+    ),
+
+  // Get all note titles for autocompletion
+  getAllNoteTitles: () =>
+    request<{ notes: NoteTitleEntry[] }>('/backlinks/notes/titles'),
+
+  // Search notes by partial match
+  searchNotes: (query: string, limit = 10) =>
+    request<{ query: string; results: NoteTitleEntry[] }>(
+      `/backlinks/notes/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
+
+  // Rebuild the link index manually
+  rebuildIndex: () =>
+    request<{ success: boolean; indexed_notes: number; message: string }>(
+      '/backlinks/links/rebuild',
+      { method: 'POST' }
+    ),
+
+  // Get link statistics
+  getStats: () =>
+    request<{ total_links: number; unique_targets: number }>('/backlinks/links/stats')
 }

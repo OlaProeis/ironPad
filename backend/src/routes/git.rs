@@ -17,6 +17,7 @@ pub fn router() -> Router {
         .route("/conflicts", get(get_conflicts))
         .route("/push", post(push))
         .route("/log", get(get_log))
+        .route("/log/file", get(get_log_for_file))
         .route("/diff", get(get_working_diff))
         .route("/diff/{commit_id}", get(get_commit_diff))
         .route("/remote", get(get_remote))
@@ -112,12 +113,29 @@ pub struct LogQuery {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FileLogQuery {
+    path: String,
+    limit: Option<usize>,
+}
+
 async fn get_log(Query(query): Query<LogQuery>) -> impl IntoResponse {
     match git::get_log(query.limit) {
         Ok(commits) => Json(commits).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to get git log: {}", err),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_log_for_file(Query(query): Query<FileLogQuery>) -> impl IntoResponse {
+    match git::get_log_for_path(&query.path, query.limit) {
+        Ok(commits) => Json(commits).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get file git log: {}", err),
         )
             .into_response(),
     }

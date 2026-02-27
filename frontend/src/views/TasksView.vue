@@ -60,6 +60,16 @@ function isTopLevel(task: Task): boolean {
   return !task.parent_id
 }
 
+// Priority color helper
+function priorityClass(priority?: string): string {
+  if (!priority) return ''
+  const p = priority.toLowerCase()
+  if (p === 'high') return 'priority-high'
+  if (p === 'medium') return 'priority-medium'
+  if (p === 'low') return 'priority-low'
+  return ''
+}
+
 // Filtered task lists (respects tag filter, only top-level tasks)
 const filteredActiveTasks = computed(() => {
   let tasks = tasksStore.activeTasks.filter(isTopLevel)
@@ -414,6 +424,21 @@ const recurrenceOptions = [
   { value: 'yearly', label: 'Yearly' },
 ]
 
+const priorityOptions = [
+  { value: '', label: 'None', color: '' },
+  { value: 'high', label: 'High', color: 'var(--color-danger)' },
+  { value: 'medium', label: 'Medium', color: 'var(--color-warning)' },
+  { value: 'low', label: 'Low', color: 'var(--color-text-muted)' },
+]
+
+const timePresets = [
+  { minutes: 15, label: '15 minutes', short: '15m' },
+  { minutes: 30, label: '30 minutes', short: '30m' },
+  { minutes: 60, label: '1 hour', short: '1h' },
+  { minutes: 120, label: '2 hours', short: '2h' },
+  { minutes: 240, label: '4 hours', short: '4h' },
+]
+
 async function setRecurrence(recurrence: string) {
   if (!tasksStore.selectedTask) return
   try {
@@ -424,6 +449,43 @@ async function setRecurrence(recurrence: string) {
   } catch {
     // Error handled in store
   }
+}
+
+async function setPriority(priority: string) {
+  if (!tasksStore.selectedTask) return
+  try {
+    await tasksStore.updateTaskMeta(projectId.value, tasksStore.selectedTask.id, {
+      priority: priority || undefined
+    })
+  } catch {
+    // Error handled in store
+  }
+}
+
+async function setTimeEstimate(minutes: number | undefined) {
+  if (!tasksStore.selectedTask) return
+  try {
+    await tasksStore.updateTaskMeta(projectId.value, tasksStore.selectedTask.id, {
+      estimated_minutes: minutes
+    })
+  } catch {
+    // Error handled in store
+  }
+}
+
+function formatEstimate(minutes?: number): string {
+  if (!minutes) return ''
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) return `${hours}h`
+  return `${hours}h ${mins}m`
+}
+
+function formatTotalEstimate(tasks: Task[]): string {
+  const total = tasks.reduce((sum, t) => sum + (t.estimated_minutes || 0), 0)
+  if (total === 0) return ''
+  return formatEstimate(total)
 }
 
 function recurrenceLabel(task: Task): string | null {
@@ -660,11 +722,11 @@ onUnmounted(() => {
       <div v-else class="tasks-sections">
         <!-- Active Tasks -->
         <section v-if="filteredActiveTasks.length > 0" class="task-section">
-          <h4>Active ({{ filteredActiveTasks.length }})</h4>
+          <h4>Active ({{ filteredActiveTasks.length }}) <span v-if="formatTotalEstimate(filteredActiveTasks)" class="section-total">{{ formatTotalEstimate(filteredActiveTasks) }}</span></h4>
           <div class="task-list">
             <template v-for="task in filteredActiveTasks" :key="task.id">
               <div
-                :class="['task-item', { selected: isSelected(task) }]"
+                :class="['task-item', { selected: isSelected(task) }, priorityClass(task.priority)]"
                 @click="selectTask(task)"
               >
                 <button class="task-checkbox" @click="toggleTask(task, $event)" title="Mark complete">
@@ -702,6 +764,9 @@ onUnmounted(() => {
                       >
                         {{ formatDueDate(task.due_date)?.text }}
                       </span>
+                      <span v-if="task.estimated_minutes" class="time-estimate-badge" :title="`${task.estimated_minutes} minutes`">
+                        {{ formatEstimate(task.estimated_minutes) }}
+                      </span>
                     </div>
                     <div v-if="task.last_comment" class="task-last-comment">
                       {{ task.last_comment }}
@@ -732,11 +797,11 @@ onUnmounted(() => {
 
         <!-- Backlog Tasks -->
         <section v-if="filteredBacklogTasks.length > 0" class="task-section">
-          <h4>Backlog ({{ filteredBacklogTasks.length }})</h4>
+          <h4>Backlog ({{ filteredBacklogTasks.length }}) <span v-if="formatTotalEstimate(filteredBacklogTasks)" class="section-total">{{ formatTotalEstimate(filteredBacklogTasks) }}</span></h4>
           <div class="task-list">
             <template v-for="task in filteredBacklogTasks" :key="task.id">
               <div
-                :class="['task-item', { selected: isSelected(task) }]"
+                :class="['task-item', { selected: isSelected(task) }, priorityClass(task.priority)]"
                 @click="selectTask(task)"
               >
                 <button class="task-checkbox" @click="toggleTask(task, $event)" title="Mark complete">
@@ -773,6 +838,9 @@ onUnmounted(() => {
                       >
                         {{ formatDueDate(task.due_date)?.text }}
                       </span>
+                      <span v-if="task.estimated_minutes" class="time-estimate-badge" :title="`${task.estimated_minutes} minutes`">
+                        {{ formatEstimate(task.estimated_minutes) }}
+                      </span>
                     </div>
                     <div v-if="task.last_comment" class="task-last-comment">
                       {{ task.last_comment }}
@@ -802,12 +870,12 @@ onUnmounted(() => {
 
         <!-- Completed Tasks -->
         <section v-if="filteredCompletedTasks.length > 0" class="task-section">
-          <h4>Completed ({{ filteredCompletedTasks.length }})</h4>
+          <h4>Completed ({{ filteredCompletedTasks.length }}) <span v-if="formatTotalEstimate(filteredCompletedTasks)" class="section-total">{{ formatTotalEstimate(filteredCompletedTasks) }}</span></h4>
           <div class="task-list">
             <div
               v-for="task in filteredCompletedTasks"
               :key="task.id"
-              :class="['task-item', 'completed', { selected: isSelected(task) }]"
+              :class="['task-item', 'completed', { selected: isSelected(task) }, priorityClass(task.priority)]"
               @click="selectTask(task)"
             >
               <button class="task-checkbox" @click="toggleTask(task, $event)" title="Mark incomplete">
@@ -882,6 +950,54 @@ onUnmounted(() => {
         </div>
         <!-- Tag Editor -->
         <div class="tag-editor-bar">
+          <!-- Priority selector with color dot -->
+          <div class="priority-selector">
+            <span
+              class="priority-dot"
+              :style="{ backgroundColor: priorityOptions.find(p => p.value === (tasksStore.selectedTask.priority || ''))?.color || 'transparent' }"
+            ></span>
+            <select
+              class="priority-select"
+              :value="tasksStore.selectedTask.priority || ''"
+              @change="setPriority(($event.target as HTMLSelectElement).value)"
+              title="Set priority"
+            >
+              <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <span class="meta-separator">|</span>
+
+          <!-- Time estimate -->
+          <div class="time-estimate-editor">
+            <span v-if="tasksStore.selectedTask.estimated_minutes" class="time-estimate-value">
+              {{ formatEstimate(tasksStore.selectedTask.estimated_minutes) }}
+            </span>
+            <div class="time-presets">
+              <button
+                v-for="preset in timePresets"
+                :key="preset.minutes"
+                :class="['time-preset-btn', { active: tasksStore.selectedTask.estimated_minutes === preset.minutes }]"
+                @click="setTimeEstimate(tasksStore.selectedTask.estimated_minutes === preset.minutes ? undefined : preset.minutes)"
+                :title="preset.label"
+              >
+                {{ preset.short }}
+              </button>
+              <button
+                v-if="tasksStore.selectedTask.estimated_minutes"
+                class="time-preset-btn clear"
+                @click="setTimeEstimate(undefined)"
+                title="Clear estimate"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+
+          <span class="meta-separator">|</span>
+
           <span
             v-for="tag in tasksStore.selectedTask.tags"
             :key="tag"
@@ -1155,6 +1271,17 @@ button.small {
   margin: 0;
 }
 
+.section-total {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-primary);
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: var(--color-bg);
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}
+
 .task-list {
   display: flex;
   flex-direction: column;
@@ -1184,6 +1311,26 @@ button.small {
 
 .task-item.selected .task-checkbox {
   color: white;
+}
+
+/* Priority color indicators - left border */
+.task-item.priority-high {
+  border-left: 3px solid var(--color-danger);
+}
+
+.task-item.priority-medium {
+  border-left: 3px solid var(--color-warning);
+}
+
+.task-item.priority-low {
+  border-left: 3px solid var(--color-text-muted);
+}
+
+/* Selected state overrides priority border */
+.task-item.selected.priority-high,
+.task-item.selected.priority-medium,
+.task-item.selected.priority-low {
+  border-left-color: rgba(255, 255, 255, 0.5);
 }
 
 .task-item.selected .delete-btn {
@@ -1436,11 +1583,110 @@ button.small {
   color: var(--color-primary);
 }
 
+/* Time estimate badge in task list */
+.time-estimate-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.task-item.selected .time-estimate-badge {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: white;
+}
+
 /* Meta separator in tag-editor-bar */
 .meta-separator {
   color: var(--color-border);
   font-size: 14px;
   user-select: none;
+}
+
+/* Priority selector */
+.priority-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.priority-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+}
+
+.priority-select {
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+}
+
+.priority-select:focus {
+  border-color: var(--color-primary);
+}
+
+/* Time estimate editor */
+.time-estimate-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-estimate-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.time-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.time-preset-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.time-preset-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.time-preset-btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.time-preset-btn.clear {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.time-preset-btn.clear:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: white;
 }
 
 /* Due date input */

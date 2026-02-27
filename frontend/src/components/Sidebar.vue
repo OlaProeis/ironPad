@@ -51,6 +51,12 @@ function goToCalendar() {
   router.push({ name: 'calendar' })
 }
 
+function goToProjectPrompts() {
+  if (activeProjectId.value) {
+    router.push({ name: 'project-prompts', params: { id: activeProjectId.value } })
+  }
+}
+
 function goToProjects() {
   router.push({ name: 'projects' })
 }
@@ -108,6 +114,12 @@ function goToProjects() {
             @click="goToCalendar"
           >
             Calendar
+          </button>
+          <button 
+            :class="['nav-item', { active: route.name === 'project-prompts' }]"
+            @click="goToProjectPrompts"
+          >
+            Prompts
           </button>
         </nav>
 

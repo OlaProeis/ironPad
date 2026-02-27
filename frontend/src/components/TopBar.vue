@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useProjectsStore, useWorkspaceStore, useUiStore, useThemeStore } from '../stores'
 
 const router = useRouter()
+const route = useRoute()
 const projectsStore = useProjectsStore()
 const workspaceStore = useWorkspaceStore()
 const uiStore = useUiStore()
@@ -59,6 +60,11 @@ function goToProjects() {
 
 function goHome() {
   router.push({ name: 'home' })
+}
+
+function goToGlobalPrompts() {
+  closeDropdown()
+  router.push({ name: 'prompts' })
 }
 </script>
 
@@ -139,6 +145,13 @@ function goHome() {
         title="Tasks"
       >
         Tasks
+      </button>
+      <button
+        @click="goToGlobalPrompts"
+        :class="{ active: route.name === 'prompts' }"
+        title="Global Prompts"
+      >
+        Prompts
       </button>
       <button 
         class="theme-toggle"

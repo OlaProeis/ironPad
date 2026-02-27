@@ -3,6 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotesStore, useWebSocketStore, useGitStore } from '../stores'
 import MilkdownEditor from '../components/MilkdownEditor.vue'
+import BacklinksPanel from '../components/BacklinksPanel.vue'
 
 const props = defineProps<{
   id?: string
@@ -241,6 +242,8 @@ watch(editorContent, (newContent) => {
           />
         </div>
       </div>
+
+      <BacklinksPanel v-if="noteId" :note-id="noteId" />
     </template>
 
     <div v-else class="empty-state">

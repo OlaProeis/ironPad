@@ -57,6 +57,7 @@ export interface Task {
   parent_id?: string
   recurrence?: string
   recurrence_interval?: number
+  estimated_minutes?: number
   project_id: string
   path: string
   created: string
@@ -69,10 +70,41 @@ export interface TaskWithContent extends Task {
   comments: Comment[]
 }
 
+// Helper type for time estimates
+export type TimeEstimate = number | undefined // minutes
+
 export interface SearchResult {
   path: string
   title: string
   matches: { line_number: number; line_content: string }[]
+}
+
+export interface PromptSummary {
+  id: string
+  title: string
+  path: string
+  scope: 'global' | 'project' | string
+  project_id?: string
+  folder: string
+  tags: string[]
+  description?: string
+  updated?: string
+}
+
+export interface Prompt extends PromptSummary {
+  frontmatter: Record<string, unknown>
+  content: string
+}
+
+export interface PromptFolder {
+  path: string
+  count: number
+}
+
+export interface PromptSearchResult {
+  prompt: PromptSummary
+  score: number
+  matched_terms: string[]
 }
 
 export interface GitStatus {
@@ -142,6 +174,42 @@ export interface DailyNote {
   path: string
   content: string
   frontmatter: Record<string, unknown>
+}
+
+export interface Backlink {
+  source_id: string
+  source_title: string
+  source_path: string
+  context: string
+  line_number: number
+}
+
+export interface ForwardLink {
+  target_id: string
+  target_title?: string
+  context: string
+  line_number: number
+}
+
+export interface NoteLinksResponse {
+  note_id: string
+  backlinks: Backlink[]
+  forward_links: ForwardLink[]
+}
+
+export interface NoteTitleEntry {
+  id: string
+  title: string
+  path?: string
+}
+
+export interface ProjectNotesTitlesResponse {
+  notes: NoteTitleEntry[]
+}
+
+export interface ProjectNotesSearchResponse {
+  query: string
+  results: NoteTitleEntry[]
 }
 
 export interface FileLock {

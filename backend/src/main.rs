@@ -69,6 +69,16 @@ async fn run_server(port_tx: Option<std::sync::mpsc::Sender<u16>>) {
     // Start auto-commit background task (tries to commit every 60s)
     services::git::start_auto_commit();
 
+    // Initialize backlinks index
+    tokio::task::spawn_blocking(|| {
+        if let Err(e) = services::backlinks::rebuild_link_index() {
+            warn!("Failed to build initial backlink index: {}", e);
+        } else {
+            let (total_links, unique_targets) = services::backlinks::get_link_stats();
+            info!("Backlink index: {} links across {} notes", total_links, unique_targets);
+        }
+    });
+
     // CORS layer (permissive for local-only app)
     let cors = CorsLayer::permissive();
 
@@ -84,6 +94,8 @@ async fn run_server(port_tx: Option<std::sync::mpsc::Sender<u16>>) {
         .nest("/tasks", routes::tasks::router())
         // Search
         .nest("/search", routes::search::router())
+        // Prompts
+        .nest("/prompts", routes::prompts::router())
         // Git
         .nest("/git", routes::git::router())
         // Projects
@@ -91,7 +103,9 @@ async fn run_server(port_tx: Option<std::sync::mpsc::Sender<u16>>) {
         // Daily notes
         .nest("/daily", routes::daily::router())
         // Assets
-        .nest("/assets", routes::assets::router());
+        .nest("/assets", routes::assets::router())
+        // Backlinks
+        .nest("/backlinks", routes::backlinks::router());
 
     // App router with WebSocket state
     let mut app = Router::new()

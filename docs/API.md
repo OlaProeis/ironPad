@@ -246,6 +246,148 @@ Content-Type: application/json
 DELETE /api/projects/:id/notes/:noteId
 ```
 
+### Get Note Titles (for link autocomplete)
+
+```http
+GET /api/projects/:id/notes-titles
+```
+
+Returns all notes in the project with their frontmatter IDs and titles. Used by the `/link` slash command dropdown.
+
+**Response:**
+
+```json
+{
+  "notes": [
+    { "id": "ferrite-index", "title": "Ferrite", "path": "projects/ferrite/index.md" },
+    { "id": "ferrite-20260227-153000", "title": "Meeting Notes", "path": "projects/ferrite/notes/20260227-153000.md" }
+  ]
+}
+```
+
+### Search Project Notes
+
+```http
+GET /api/projects/:id/notes-search?q=meeting&limit=10
+```
+
+Filter notes by partial title or ID match within a project.
+
+**Response:**
+
+```json
+{
+  "query": "meeting",
+  "results": [
+    { "id": "ferrite-20260227-153000", "title": "Meeting Notes", "path": "projects/ferrite/notes/20260227-153000.md" }
+  ]
+}
+```
+
+---
+
+## Backlinks
+
+See [`backlinks.md`](./backlinks.md) for full feature documentation.
+
+### Get Links for a Note
+
+Returns both backlinks (incoming) and forward links (outgoing).
+
+```http
+GET /api/backlinks/notes/:noteId/links
+```
+
+**Response:**
+
+```json
+{
+  "note_id": "ferrite-20260227-153000",
+  "backlinks": [
+    {
+      "source_id": "ferrite-20260226-100000",
+      "source_title": "Project Overview",
+      "source_path": "projects/ferrite/notes/20260226-100000.md",
+      "context": "See [Meeting Notes](ferrite-20260227-153000) for details",
+      "line_number": 5
+    }
+  ],
+  "forward_links": [
+    {
+      "target_id": "ferrite-20260225-090000",
+      "target_title": "Architecture Notes",
+      "context": "Based on the [Architecture Notes](ferrite-20260225-090000)",
+      "line_number": 12
+    }
+  ]
+}
+```
+
+### Get Backlinks Only
+
+```http
+GET /api/backlinks/notes/:noteId/backlinks
+```
+
+**Response:**
+
+```json
+{
+  "note_id": "ferrite-20260227-153000",
+  "backlinks": [...],
+  "count": 1
+}
+```
+
+### Get Forward Links Only
+
+```http
+GET /api/backlinks/notes/:noteId/forward-links
+```
+
+**Response:**
+
+```json
+{
+  "note_id": "ferrite-20260227-153000",
+  "forward_links": [...],
+  "count": 2
+}
+```
+
+### Rebuild Link Index
+
+Force a full rescan of all note files and rebuild the in-memory link index.
+
+```http
+POST /api/backlinks/links/rebuild
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "indexed_notes": 42,
+  "message": "Indexed 42 notes"
+}
+```
+
+### Get Link Statistics
+
+```http
+GET /api/backlinks/links/stats
+```
+
+**Response:**
+
+```json
+{
+  "total_links": 15,
+  "unique_targets": 8
+}
+```
+
 ---
 
 ## Project Tasks

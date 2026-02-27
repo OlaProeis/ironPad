@@ -16,6 +16,7 @@ use crate::routes::tasks::{
 };
 use crate::services::filesystem;
 use crate::services::frontmatter;
+use crate::services::backlinks;
 
 #[derive(Debug, Serialize)]
 pub struct Project {
@@ -110,6 +111,9 @@ pub fn router() -> Router {
                 .put(update_project_note)
                 .delete(delete_project_note),
         )
+        // Link selection routes (for slash command)
+        .route("/{id}/notes-titles", get(get_project_notes_titles))
+        .route("/{id}/notes-search", get(search_project_notes))
 }
 
 // ============ Task Handlers ============
@@ -830,6 +834,16 @@ async fn update_project_note(
             .into_response();
     }
 
+    // Update link index for backlinks
+    let note_id_for_links = fm
+        .get(&serde_yaml::Value::from("id"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| note_id.clone());
+    tracing::info!("Updating backlinks for note: {} with content length: {}", note_id_for_links, body.len());
+    backlinks::update_note_links(&note_id_for_links, &body);
+    tracing::info!("Backlinks updated for note: {}", note_id_for_links);
+
     let id = fm
         .get(&serde_yaml::Value::from("id"))
         .and_then(|v| v.as_str())
@@ -895,4 +909,200 @@ async fn delete_project_note(
     }
 
     StatusCode::NO_CONTENT.into_response()
+}
+
+// ============ Link Selection Handlers ============
+
+#[derive(Debug, Serialize)]
+pub struct NoteTitleEntry {
+    pub id: String,
+    pub title: String,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NotesTitlesResponse {
+    pub notes: Vec<NoteTitleEntry>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NotesSearchResponse {
+    pub query: String,
+    pub results: Vec<NoteTitleEntry>,
+}
+
+// Get all notes with titles for a project (for slash command link selection)
+async fn get_project_notes_titles(Path(project_id): Path<String>) -> impl IntoResponse {
+    let notes_dir = config::data_dir()
+        .join("projects")
+        .join(&project_id)
+        .join("notes");
+
+    let mut notes = Vec::new();
+
+    // Add the project's index.md as the first option
+    let index_path = config::data_dir()
+        .join("projects")
+        .join(&project_id)
+        .join("index.md");
+    
+    if let Ok(content) = fs::read_to_string(&index_path) {
+        let (fm, _, _) = frontmatter::parse_frontmatter(&content);
+        let id = fm
+            .get(&serde_yaml::Value::from("id"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| format!("{}-index", project_id));
+        let title = fm
+            .get(&serde_yaml::Value::from("title"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| "Project Index".to_string());
+        notes.push(NoteTitleEntry {
+            id,
+            title,
+            path: format!("projects/{}/index.md", project_id),
+        });
+    }
+
+    // Read all notes in the project
+    if notes_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&notes_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("md") {
+                    continue;
+                }
+
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let (fm, _, _) = frontmatter::parse_frontmatter(&content);
+                    
+                    let filename = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let id = fm
+                        .get(&serde_yaml::Value::from("id"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| filename.clone());
+
+                    let title = fm
+                        .get(&serde_yaml::Value::from("title"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| filename.clone());
+
+                    notes.push(NoteTitleEntry {
+                        id,
+                        title,
+                        path: format!("projects/{}/notes/{}.md", project_id, filename),
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort by title
+    notes.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+
+    Json(NotesTitlesResponse { notes }).into_response()
+}
+
+// Search notes by title within a project
+async fn search_project_notes(
+    Path(project_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let query = params.get("q").map(|s| s.to_lowercase()).unwrap_or_default();
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(10);
+
+    let notes_dir = config::data_dir()
+        .join("projects")
+        .join(&project_id)
+        .join("notes");
+
+    let mut results = Vec::new();
+
+    // Search project notes
+    if notes_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&notes_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("md") {
+                    continue;
+                }
+
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let (fm, _, _) = frontmatter::parse_frontmatter(&content);
+                    
+                    let filename = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let id = fm
+                        .get(&serde_yaml::Value::from("id"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| filename.clone());
+
+                    let title = fm
+                        .get(&serde_yaml::Value::from("title"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| filename.clone());
+
+                    // Check if query matches id or title
+                    if id.to_lowercase().contains(&query) || title.to_lowercase().contains(&query) {
+                        results.push(NoteTitleEntry {
+                            id,
+                            title,
+                            path: format!("projects/{}/notes/{}.md", project_id, filename),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Also check project index
+    let index_path = config::data_dir()
+        .join("projects")
+        .join(&project_id)
+        .join("index.md");
+    
+    if let Ok(content) = fs::read_to_string(&index_path) {
+        let (fm, _, _) = frontmatter::parse_frontmatter(&content);
+        let id = fm
+            .get(&serde_yaml::Value::from("id"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| format!("{}-index", project_id));
+        let title = fm
+            .get(&serde_yaml::Value::from("title"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| "Project Index".to_string());
+        
+        if id.to_lowercase().contains(&query) || title.to_lowercase().contains(&query) {
+            results.push(NoteTitleEntry {
+                id,
+                title,
+                path: format!("projects/{}/index.md", project_id),
+            });
+        }
+    }
+
+    // Sort by title and limit results
+    results.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    results.truncate(limit);
+
+    Json(NotesSearchResponse { query, results }).into_response()
 }
