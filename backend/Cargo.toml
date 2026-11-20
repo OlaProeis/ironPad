@@ -1,6 +1,6 @@
 [package]
 name = "ironpad"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
@@ -44,6 +44,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 
+# GitHub API (v0.4.0)
+reqwest = { version = "0.12", features = ["json", "gzip"] }
+dirs = "5"
+
 # Utilities
 lazy_static = "1.4"
 tokio-util = { version = "0.7", features = ["io"] }
@@ -52,6 +56,7 @@ once_cell = "1.19"
 
 # System tray (production mode)
 tray-item = "0.10"
+rfd = "0.18.0"
 
 # Linux: tray-item needs ksni feature (pure-Rust D-Bus StatusNotifierItem)
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -64,3 +69,8 @@ windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "W
 # Build dependencies (Windows icon embedding)
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1"
+
+[dev-dependencies]
+http-body-util = "0.1"
+mockito = "1.6"
+tempfile = "3"

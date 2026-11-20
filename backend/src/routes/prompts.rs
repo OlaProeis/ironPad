@@ -7,6 +7,8 @@ use axum::{
 };
 use serde::Deserialize;
 
+use std::path::PathBuf;
+
 use crate::services::prompts::{
     self, PromptCreateRequest, PromptListQuery, PromptSearchQuery, PromptUpdateRequest,
 };
@@ -39,9 +41,24 @@ async fn list_prompts(Query(query): Query<PromptListQuery>) -> impl IntoResponse
     }
 }
 
-async fn get_prompt(Path(id): Path<String>) -> impl IntoResponse {
-    match prompts::get_prompt(&id) {
-        Ok(prompt) => Json(prompt).into_response(),
+#[derive(Debug, Deserialize)]
+pub struct PromptGetQuery {
+    /// Client-supplied project folder root. Project links resolve `source` against this directory.
+    root: Option<String>,
+}
+
+async fn get_prompt(
+    Path(id): Path<String>,
+    Query(query): Query<PromptGetQuery>,
+) -> impl IntoResponse {
+    let root = query
+        .root
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    match prompts::get_prompt_for_read(&id, root.as_deref()) {
+        Ok(prompt) => (StatusCode::OK, Json(prompt)).into_response(),
         Err(err) if err.starts_with("Prompt not found") => {
             (StatusCode::NOT_FOUND, err).into_response()
         }
@@ -56,7 +73,7 @@ async fn get_prompt(Path(id): Path<String>) -> impl IntoResponse {
 async fn create_prompt(Json(payload): Json<PromptCreateRequest>) -> impl IntoResponse {
     match prompts::create_prompt(payload) {
         Ok(prompt) => (StatusCode::CREATED, Json(prompt)).into_response(),
-        Err(err) if err.contains("required") || err.contains("not found") => {
+        Err(err) if prompts::is_client_error(&err) => {
             (StatusCode::BAD_REQUEST, err).into_response()
         }
         Err(err) => (
@@ -75,6 +92,9 @@ async fn update_prompt(
         Ok(prompt) => Json(prompt).into_response(),
         Err(err) if err.starts_with("Prompt not found") => {
             (StatusCode::NOT_FOUND, err).into_response()
+        }
+        Err(err) if prompts::is_client_error(&err) => {
+            (StatusCode::BAD_REQUEST, err).into_response()
         }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,

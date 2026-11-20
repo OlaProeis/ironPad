@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 (requires backend running on port 3000).
+Open http://localhost:5173 (proxies API to the backend; default **37891**, see `vite.config.ts` and `IRONPAD_PORT`).
 
 ## Tech Stack
 
@@ -138,6 +138,6 @@ npm run lint      # Run ESLint
 
 ## Environment
 
-The frontend expects the backend API at `http://localhost:3000`. This is configured in `src/api/client.ts`.
+In dev, Vite proxies `/api` and `/ws` to the backend (`vite.config.ts`, default `http://127.0.0.1:37891`). Set **`IRONPAD_PORT`** to match if the backend binds a different port. `src/api/client.ts` uses relative `/api` URLs.
 
 For production, build the frontend and serve from any static host, configuring the API URL as needed.

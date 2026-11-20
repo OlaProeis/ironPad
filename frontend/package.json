@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "vue-tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.1",
@@ -32,9 +34,12 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.15.0",
     "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/test-utils": "^2.6.0",
     "@vue/tsconfig": "^0.8.1",
+    "happy-dom": "^21.0.4",
     "typescript": "~5.7.3",
     "vite": "^6.3.5",
+    "vitest": "^3.2.4",
     "vue-tsc": "^2.2.10"
   }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useGitStore } from '../stores'
+import { GIT_BACKUP_DOC_HREF } from '../lib/gitRemoteSetup'
 
 const gitStore = useGitStore()
 
@@ -8,6 +9,11 @@ const gitStore = useGitStore()
 const commitMessage = ref('')
 const activeTab = ref<'changes' | 'history'>('changes')
 const expandedFiles = ref<Set<string>>(new Set())
+const remoteUrlInput = ref('')
+const replaceRemoteOpen = ref(false)
+const remoteSetupError = ref<string | null>(null)
+const remoteSetupWarning = ref<string | null>(null)
+const remoteSetupSuccess = ref<string | null>(null)
 
 // Computed
 const canCommit = computed(() => 
@@ -45,6 +51,47 @@ async function doFetch() {
   } catch {
     // Error handled in store
   }
+}
+
+async function doPull() {
+  try {
+    await gitStore.pull()
+  } catch {
+    // Error handled in store
+  }
+}
+
+function resetRemoteSetupMessages() {
+  remoteSetupError.value = null
+  remoteSetupWarning.value = null
+  remoteSetupSuccess.value = null
+}
+
+function openReplaceRemote() {
+  resetRemoteSetupMessages()
+  replaceRemoteOpen.value = true
+  remoteUrlInput.value = gitStore.remote?.url ?? ''
+}
+
+function cancelReplaceRemote() {
+  replaceRemoteOpen.value = false
+  remoteUrlInput.value = ''
+  resetRemoteSetupMessages()
+}
+
+async function saveRemoteUrl() {
+  resetRemoteSetupMessages()
+  const result = await gitStore.setRemoteOrigin(remoteUrlInput.value)
+  if (!result.success) {
+    remoteSetupError.value = result.message
+    return
+  }
+  remoteSetupSuccess.value = result.message
+  if (result.fetch_error) {
+    remoteSetupWarning.value = result.fetch_error
+  }
+  replaceRemoteOpen.value = false
+  remoteUrlInput.value = result.url
 }
 
 function selectCommit(commitId: string) {
@@ -112,9 +159,13 @@ function handleKeydown(e: KeyboardEvent) {
 watch(() => gitStore.panelOpen, (open) => {
   if (open) {
     document.addEventListener('keydown', handleKeydown)
+    resetRemoteSetupMessages()
+    replaceRemoteOpen.value = false
+    remoteUrlInput.value = ''
   } else {
     document.removeEventListener('keydown', handleKeydown)
     gitStore.clearSelectedCommit()
+    cancelReplaceRemote()
   }
 })
 </script>
@@ -170,6 +221,88 @@ watch(() => gitStore.panelOpen, (open) => {
           <div class="panel-content">
             <!-- Changes Tab -->
             <div v-if="activeTab === 'changes'" class="changes-tab">
+              <!-- Remote origin -->
+              <section class="remote-setup">
+                <div class="remote-setup-header">
+                  <span class="section-title">Remote backup</span>
+                  <a
+                    :href="GIT_BACKUP_DOC_HREF"
+                    class="doc-link"
+                    @click.prevent
+                  >Git backup guide</a>
+                </div>
+                <p class="remote-setup-hint">
+                  Add a private repository URL as <code>origin</code> to push and fetch your data copy.
+                </p>
+
+                <div v-if="!gitStore.hasRemote" class="remote-form">
+                  <input
+                    v-model="remoteUrlInput"
+                    type="url"
+                    class="remote-url-input"
+                    placeholder="https://github.com/you/ironpad-data.git"
+                    :disabled="gitStore.settingRemote"
+                    @keydown.enter.prevent="saveRemoteUrl"
+                  />
+                  <button
+                    type="button"
+                    class="remote-save-btn"
+                    :disabled="!remoteUrlInput.trim() || gitStore.settingRemote"
+                    @click="saveRemoteUrl"
+                  >
+                    {{ gitStore.settingRemote ? 'Saving...' : 'Save remote' }}
+                  </button>
+                </div>
+
+                <div v-else class="remote-configured">
+                  <div v-if="!replaceRemoteOpen" class="remote-current">
+                    <span class="remote-label">Origin</span>
+                    <span class="remote-url" :title="gitStore.remote!.url">{{ gitStore.remote!.url }}</span>
+                    <button type="button" class="remote-replace-btn" @click="openReplaceRemote">
+                      Replace
+                    </button>
+                  </div>
+                  <div v-else class="remote-form remote-form-replace">
+                    <input
+                      v-model="remoteUrlInput"
+                      type="url"
+                      class="remote-url-input"
+                      placeholder="https://github.com/you/ironpad-data.git"
+                      :disabled="gitStore.settingRemote"
+                      @keydown.enter.prevent="saveRemoteUrl"
+                    />
+                    <div class="remote-form-actions">
+                      <button
+                        type="button"
+                        class="remote-save-btn"
+                        :disabled="!remoteUrlInput.trim() || gitStore.settingRemote"
+                        @click="saveRemoteUrl"
+                      >
+                        {{ gitStore.settingRemote ? 'Saving...' : 'Save' }}
+                      </button>
+                      <button
+                        type="button"
+                        class="remote-cancel-btn"
+                        :disabled="gitStore.settingRemote"
+                        @click="cancelReplaceRemote"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <p v-if="remoteSetupError" class="remote-setup-error" role="alert">
+                  {{ remoteSetupError }}
+                </p>
+                <p v-if="remoteSetupWarning" class="remote-setup-warning" role="status">
+                  {{ remoteSetupWarning }}
+                </p>
+                <p v-if="remoteSetupSuccess" class="remote-setup-success" role="status">
+                  {{ remoteSetupSuccess }}
+                </p>
+              </section>
+
               <!-- Commit Form -->
               <div class="commit-form">
                 <textarea 
@@ -205,7 +338,19 @@ watch(() => gitStore.panelOpen, (open) => {
                   >
                     {{ gitStore.fetching ? '...' : '↓ Fetch' }}
                   </button>
+                  <button
+                    v-if="gitStore.hasRemote"
+                    class="pull-btn"
+                    :disabled="gitStore.pulling"
+                    @click="doPull"
+                    title="Pull fast-forward from upstream"
+                  >
+                    {{ gitStore.pulling ? '...' : '⇣ Pull' }}
+                  </button>
                 </div>
+                <p v-if="gitStore.pullMessage" class="pull-feedback" role="status">
+                  {{ gitStore.pullMessage }}
+                </p>
               </div>
 
               <!-- Changed Files List -->
@@ -558,6 +703,148 @@ watch(() => gitStore.panelOpen, (open) => {
   padding: 16px;
 }
 
+.remote-setup {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.remote-setup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.remote-setup .section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.doc-link {
+  font-size: 12px;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.doc-link:hover {
+  text-decoration: underline;
+}
+
+.remote-setup-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.remote-setup-hint code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.remote-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.remote-form-replace .remote-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.remote-url-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.remote-url-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.remote-save-btn,
+.remote-replace-btn,
+.remote-cancel-btn {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.remote-save-btn {
+  align-self: flex-start;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+}
+
+.remote-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.remote-replace-btn,
+.remote-cancel-btn {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.remote-replace-btn:hover:not(:disabled),
+.remote-cancel-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.remote-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.remote-label {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.remote-url {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.remote-setup-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-danger);
+}
+
+.remote-setup-warning {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-warning);
+}
+
+.remote-setup-success {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-success);
+}
+
 .commit-form {
   margin-bottom: 16px;
 }
@@ -592,7 +879,8 @@ watch(() => gitStore.panelOpen, (open) => {
 
 .commit-btn,
 .push-btn,
-.fetch-btn {
+.fetch-btn,
+.pull-btn {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
@@ -613,21 +901,30 @@ watch(() => gitStore.panelOpen, (open) => {
 }
 
 .push-btn,
-.fetch-btn {
+.fetch-btn,
+.pull-btn {
   background: var(--color-bg-secondary);
   color: var(--color-text);
   border: 1px solid var(--color-border);
 }
 
 .push-btn:hover:not(:disabled),
-.fetch-btn:hover:not(:disabled) {
+.fetch-btn:hover:not(:disabled),
+.pull-btn:hover:not(:disabled) {
   background: var(--color-bg-hover);
 }
 
 .push-btn:disabled,
-.fetch-btn:disabled {
+.fetch-btn:disabled,
+.pull-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.pull-feedback {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-success);
 }
 
 /* Files List */

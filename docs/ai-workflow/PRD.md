@@ -3,7 +3,7 @@
 
 **Version:** 3.0  
 **Date:** 2026-02-02  
-**Status:** Active Development  
+**Status:** Original product spec. Phases 0–3 are complete in [`CHECKLIST.md`](./CHECKLIST.md). The 0.4.0 PRDs shipped on 2026-11-20. Section 13 checkboxes in this file were not kept current.  
 **Author:** Internal / Personal  
 **Changelog:** v3.0 - Addressed concurrency, file watching, git conflicts, port handling, and frontmatter automation
 

@@ -8,13 +8,14 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)
-![Version](https://img.shields.io/badge/version-0.3.0-green)
+![Version](https://img.shields.io/badge/version-0.4.0-green)
 
 Ironpad stores all your notes, projects, and tasks as plain Markdown files. No cloud services, no vendor lock-in -- your data stays on your machine in a format you can read and edit with any text editor. Every change is automatically versioned with Git.
 
 ![Ironpad Screenshot](docs/screenshot.jpg)
 
-> **v0.3.0** -- Prompt Manager, calendar drag-and-drop rescheduling, week/day calendar views, and prompt-level Git history.  
+> **v0.4.0** -- Library (prompts plus links to files on disk), read-only GitHub issues and pull requests, task list sort, bulk actions, dashboard tag filter, sidebar overdue count, day-view capacity, and private Git backup (set `origin`, fast-forward pull).  
+> **Previous (v0.3.0)** -- Prompt Manager, calendar drag-and-drop rescheduling, week/day calendar views, prompt-level Git history, backlinks, and quick-add.  
 > **Previous (v0.2.0)** -- Task comments, recurring tasks on calendar, system tray mode, and app branding. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ![What's New in v0.3.0](docs/graphics/whats-new-v030.png)
@@ -25,16 +26,17 @@ Ironpad stores all your notes, projects, and tasks as plain Markdown files. No c
 
 - **File-based storage** -- All data stored as Markdown files with YAML frontmatter
 - **Local-first** -- Works fully offline, no internet required
-- **Git integration** -- Automatic version control with 60-second commit batching, full diff viewer, push/fetch
+- **Git integration** -- Automatic version control with 60-second commit batching, full diff viewer, push/fetch, a private `origin` from the Git panel, and fast-forward-only pull. Backup is async, not live co-editing. See [docs/git-backup.md](docs/git-backup.md)
 - **WYSIWYG editing** -- Milkdown editor with real-time markdown rendering and formatting toolbar
-- **Project management** -- Organize tasks and notes by project with due dates, tags, subtasks, recurrence, and comments
-- **Calendar view** -- Month, week, and day views showing tasks by due date with color-coded urgency; drag-and-drop rescheduling; recurring tasks automatically expanded across the calendar
-- **Dashboard** -- Cross-project overview with active task summaries
+- **Project management** -- Tasks and notes by project, with due dates, tags, subtasks, recurrence, comments, task-list sort (created, due date, or priority), bulk complete / move / tag, and an overdue count for the active project (a task due today is not overdue)
+- **Calendar view** -- Month, week, and day views showing tasks by due date with color-coded urgency; drag-and-drop rescheduling; recurring tasks expanded across the calendar; day view shows estimated time against a daily budget (default 6 hours, amber when over)
+- **Dashboard** -- Cross-project overview with active task summaries, a filter by task tag, and GitHub assigned-issue and review-request counts when a project is linked
 - **Daily notes** -- Quick capture with templates for daily journaling
 - **Real-time sync** -- WebSocket-based live updates; edit in VS Code, see changes in the browser instantly
 - **External editing** -- Full support for VS Code, Obsidian, Vim, or any text editor
 - **Search** -- ripgrep-powered full-text search across all files (Ctrl+K)
-- **Prompt Manager** -- Global and project-scoped prompt libraries with folders, tags, semantic search, variable templates (`{{...}}`), one-click copy, and copy-rendered output
+- **Library** -- Global and project prompts, plus read-only links to files on disk. Folders, tags, semantic search, `{{variable}}` templates, copy rendered, raw or rendered reading, copy bundle, and collapsible Git history. The screen is labeled Library; routes stay on the prompt paths
+- **GitHub link** -- One `owner/name` repository per project. Read-only open issues and pull requests. **Track as task** makes a local copy and does not write back to GitHub. Login is `gh auth login` or `GH_TOKEN`. Separate from Remote backup. See [docs/github-link.md](docs/github-link.md)
 - **Dark theme** -- Beautiful dark UI by default with light mode toggle
 - **System tray** -- Runs quietly in the system tray (Windows, macOS, Linux); no console window in release builds
 - **Tiny footprint** -- 5 MB binary, ~20 MB RAM, sub-second startup
@@ -98,14 +100,26 @@ Current status:
 - [x] Prompt variables + copy-rendered workflow (`{{variable_name}}`)
 - [x] Calendar drag-and-drop rescheduling
 - [x] Week and day calendar views
+- [x] Backlinks between notes (`/link`, backlinks panel, link index)
+- [x] Quick-add task (Ctrl+Shift+A)
+- [x] Task list sort, sidebar overdue count, and bulk actions (0.4.0)
+- [x] Dashboard filter by task tag (frontmatter tags across projects)
+- [x] Fit the day (capacity from `estimated_minutes`)
+- [x] Private Git backup in the app (origin URL, fast-forward pull)
+- [x] Library (prompts plus links to files on disk)
+- [x] GitHub issues and pull requests (read-only, track as a local task)
 - [ ] UI polish and animations
-- [ ] Tag extraction and filtering across projects
-- [ ] Backlinks between notes
-- [ ] Graph view of note connections
+- [ ] Note-body tag extraction
+- [ ] Task templates
+- [ ] Graph view of note connections (on top of the 0.3 link index)
 - [ ] Export to PDF / HTML
 - [ ] Custom themes
-- [ ] Global hotkey (Ctrl+Shift+Space)
 - [ ] Kanban board view for tasks
+- [ ] Run a prompt on a note or task (optional localhost model)
+- [ ] Weekly review written to `data/reviews/`
+- [ ] Waiting across projects (`waiting_on`)
+- [ ] Capture strip on Ctrl+Shift+Space (app stays in the background)
+- [ ] Project blueprints
 
 See [CHECKLIST.md](docs/ai-workflow/CHECKLIST.md) for detailed implementation status.
 
@@ -126,7 +140,7 @@ Read about the method:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Data directory | `data/` next to executable | Override with `IRONPAD_DATA_DIR` env var |
-| Backend port | 3000 (auto-increments to 3010) | Dynamic port selection |
+| Backend port | 37891–37990 (first free) | Avoids common dev ports. Override with `IRONPAD_PORT`. |
 | Auto-commit | Every 60 seconds | Git commits when changes exist |
 | Auto-save | 1 second debounce | Frontend saves after typing stops |
 
@@ -138,6 +152,10 @@ Read about the method:
 |----------|-------------|
 | [docs/API.md](docs/API.md) | Complete REST API reference |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and technical details |
+| [docs/git-backup.md](docs/git-backup.md) | Private Git remote: set `origin`, push, fast-forward pull |
+| [docs/github-link.md](docs/github-link.md) | Read-only GitHub issues and pull requests |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
+| [ROADMAP.md](ROADMAP.md) | Released, in-tree, and proposed work |
 | [docs/ai-workflow/](docs/ai-workflow/) | AI development workflow and methodology |
 
 ## Contributing

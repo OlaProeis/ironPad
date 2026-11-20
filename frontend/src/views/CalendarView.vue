@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useTasksStore, useProjectsStore, useWorkspaceStore } from '../stores'
 import { dailyApi, tasksApi } from '../api/client'
 import type { Task, DailyNote } from '../types'
+import { barFillRatio, readBudgetHours, writeBudgetHours } from '../lib/dayBudget'
 
 const router = useRouter()
 const tasksStore = useTasksStore()
@@ -328,6 +329,43 @@ function formatEstimate(minutes: number): string {
   return `${hours}h ${mins}m`
 }
 
+function formatEstimateOrZero(minutes: number): string {
+  return formatEstimate(minutes) || '0m'
+}
+
+const budgetHours = ref(readBudgetHours())
+
+const dayViewDateStr = computed(() =>
+  formatDate(currentYear.value, currentMonth.value, currentDay.value)
+)
+
+const dayUsedMinutes = computed(() => {
+  if (viewMode.value !== 'day') return 0
+  return getTotalEstimateForDate(dayViewDateStr.value)
+})
+
+const dayBudgetMinutes = computed(() => budgetHours.value * 60)
+
+const dayBarFillRatio = computed(() =>
+  barFillRatio(dayUsedMinutes.value, dayBudgetMinutes.value)
+)
+
+const dayOverBudget = computed(
+  () => dayUsedMinutes.value > dayBudgetMinutes.value
+)
+
+function commitBudgetHoursFromInput(event: Event) {
+  const el = event.target as HTMLInputElement
+  const parsed = Number.parseInt(el.value, 10)
+  if (!Number.isFinite(parsed)) {
+    el.value = String(budgetHours.value)
+    return
+  }
+  writeBudgetHours(parsed)
+  budgetHours.value = readBudgetHours()
+  el.value = String(budgetHours.value)
+}
+
 function hasDailyNote(dateStr: string): boolean {
   return dailyDates.value.has(dateStr)
 }
@@ -561,9 +599,46 @@ onMounted(async () => {
           <span class="cell-day">{{ day.day }}</span>
           <span v-if="viewMode !== 'month'" class="cell-weekday">{{ dayNames[idx] }}</span>
           <span v-if="hasDailyNote(day.date)" class="daily-dot" title="Daily note"></span>
-          <span v-if="getTotalEstimateForDate(day.date) > 0" class="cell-total-estimate">
+          <span
+            v-if="viewMode !== 'day' && getTotalEstimateForDate(day.date) > 0"
+            class="cell-total-estimate"
+          >
             {{ formatEstimate(getTotalEstimateForDate(day.date)) }}
           </span>
+        </div>
+        <div v-if="viewMode === 'day'" class="day-budget-panel">
+          <div
+            class="day-budget-label"
+            :class="{ 'over-budget': dayOverBudget }"
+          >
+            {{ formatEstimateOrZero(dayUsedMinutes) }} /
+            {{ formatEstimate(dayBudgetMinutes) }}
+          </div>
+          <div
+            class="day-budget-bar"
+            :class="{ 'over-budget': dayOverBudget }"
+            role="progressbar"
+            :aria-valuenow="dayUsedMinutes"
+            :aria-valuemin="0"
+            :aria-valuemax="dayBudgetMinutes"
+          >
+            <div
+              class="day-budget-bar-fill"
+              :style="{ width: `${dayBarFillRatio * 100}%` }"
+            />
+          </div>
+          <label class="day-budget-editor">
+            <span class="day-budget-editor-label">Daily budget (hours)</span>
+            <input
+              type="number"
+              class="day-budget-input"
+              min="1"
+              max="24"
+              step="1"
+              :value="budgetHours"
+              @change="commitBudgetHoursFromInput"
+            />
+          </label>
         </div>
         <div class="cell-tasks">
           <div
@@ -812,6 +887,66 @@ onMounted(async () => {
   background: rgba(88, 166, 255, 0.1);
   border-radius: 4px;
   border: 1px solid rgba(88, 166, 255, 0.2);
+}
+
+.day-budget-panel {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.day-budget-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.day-budget-label.over-budget {
+  color: var(--color-warning);
+}
+
+.day-budget-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.day-budget-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--color-primary);
+  transition: width 0.2s ease;
+}
+
+.day-budget-bar.over-budget .day-budget-bar-fill {
+  background: var(--color-warning);
+}
+
+.day-budget-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.day-budget-editor-label {
+  flex-shrink: 0;
+}
+
+.day-budget-input {
+  width: 4rem;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
 }
 
 /* Tasks in cells */

@@ -1,7 +1,11 @@
 # Ironpad - Session Handover
 
+**Current status (2026-11-20):** Release 0.4.0 is the tagged GitHub release. All three 0.4 PRDs are done (task list / dashboard / Git backup, Library, GitHub issues and pull requests). Next scope is the 0.5.0 proposal in `ROADMAP.md`, which has no PRD yet. See `ai-context.md`.
+
+The notes below are the 2026-02-27 backlinks session and are historical.
+
 **Date:** 2026-02-27
-**Version:** 0.3.0 (in progress)
+**Version:** 0.3.0 (released)
 **Context:** See `ai-context.md` for full project overview
 
 ---
@@ -77,7 +81,7 @@ Two new critical patterns added to `ai-context.md`:
 
 ```bash
 # Backend (from backend/)
-cargo run              # API server on :3000
+cargo run              # API server (default range starts :37891)
 cargo check            # Check compilation
 
 # Frontend (from frontend/)

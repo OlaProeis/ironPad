@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::services::git;
+use crate::services::git_errors;
 
 pub fn router() -> Router {
     Router::new()
@@ -20,8 +21,9 @@ pub fn router() -> Router {
         .route("/log/file", get(get_log_for_file))
         .route("/diff", get(get_working_diff))
         .route("/diff/{commit_id}", get(get_commit_diff))
-        .route("/remote", get(get_remote))
+        .route("/remote", get(get_remote).post(set_remote))
         .route("/fetch", post(fetch))
+        .route("/pull", post(pull))
 }
 
 async fn get_status() -> impl IntoResponse {
@@ -82,7 +84,7 @@ async fn push() -> impl IntoResponse {
             StatusCode::BAD_REQUEST,
             Json(PushResponse {
                 success: false,
-                message: "No remote repository configured. Add a remote with: git remote add origin <url>".to_string(),
+                message: git_errors::MSG_NO_REMOTE.to_string(),
             }),
         )
             .into_response();
@@ -174,10 +176,88 @@ async fn get_remote() -> impl IntoResponse {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct SetRemoteRequest {
+    url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SetRemoteResponse {
+    success: bool,
+    message: String,
+    url: String,
+    replaced: bool,
+    fetch_error: Option<String>,
+}
+
+async fn set_remote(Json(payload): Json<SetRemoteRequest>) -> impl IntoResponse {
+    match git::set_remote_origin(&payload.url) {
+        Ok(outcome) => {
+            let message = if outcome.replaced {
+                "Remote origin URL was replaced.".to_string()
+            } else {
+                "Remote origin was added.".to_string()
+            };
+            (
+                StatusCode::OK,
+                Json(SetRemoteResponse {
+                    success: true,
+                    message,
+                    url: outcome.url,
+                    replaced: outcome.replaced,
+                    fetch_error: outcome.fetch_error,
+                }),
+            )
+                .into_response()
+        }
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            Json(SetRemoteResponse {
+                success: false,
+                message: err,
+                url: String::new(),
+                replaced: false,
+                fetch_error: None,
+            }),
+        )
+            .into_response(),
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct FetchResponse {
     success: bool,
     message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PullResponse {
+    success: bool,
+    message: String,
+    commits: usize,
+}
+
+async fn pull() -> impl IntoResponse {
+    match git::pull_from_remote() {
+        Ok(outcome) => (
+            StatusCode::OK,
+            Json(PullResponse {
+                success: true,
+                message: outcome.message,
+                commits: outcome.commits,
+            }),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            Json(PullResponse {
+                success: false,
+                message: err,
+                commits: 0,
+            }),
+        )
+            .into_response(),
+    }
 }
 
 async fn fetch() -> impl IntoResponse {

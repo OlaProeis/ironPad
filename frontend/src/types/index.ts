@@ -21,6 +21,7 @@ export interface Project {
   name: string
   path: string
   created: string
+  github_repo?: string
 }
 
 export interface ProjectWithContent extends Project {
@@ -79,6 +80,8 @@ export interface SearchResult {
   matches: { line_number: number; line_content: string }[]
 }
 
+export type PromptKind = 'prompt' | 'link'
+
 export interface PromptSummary {
   id: string
   title: string
@@ -89,11 +92,43 @@ export interface PromptSummary {
   tags: string[]
   description?: string
   updated?: string
+  kind: PromptKind
+  source?: string
 }
 
 export interface Prompt extends PromptSummary {
+  template: boolean
   frontmatter: Record<string, unknown>
   content: string
+  read_only: boolean
+  source_missing: boolean
+  resolved_path?: string
+  root_required?: boolean
+  source_error?: string
+  supports_rendered?: boolean
+}
+
+export interface BrowseEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  size: number
+  linkable: boolean
+}
+
+export interface BrowseResponse {
+  path: string
+  parent: string | null
+  entries: BrowseEntry[]
+}
+
+export interface OpenLibraryResponse {
+  ok: boolean
+  resolved_path: string
+}
+
+export interface LibraryPickResponse {
+  paths: string[]
 }
 
 export interface PromptFolder {
@@ -166,6 +201,14 @@ export interface RemoteInfo {
   has_upstream: boolean
   ahead: number
   behind: number
+}
+
+export interface SetRemoteResponse {
+  success: boolean
+  message: string
+  url: string
+  replaced: boolean
+  fetch_error: string | null
 }
 
 export interface DailyNote {
@@ -247,4 +290,78 @@ export interface WsFileLockPayload {
   path: string
   client_id: string
   lock_type: 'editor' | 'task_view'
+}
+
+export interface GithubLabel {
+  name: string
+  color?: string
+}
+
+export interface GithubIssue {
+  number: number
+  title: string
+  html_url: string
+  updated_at: string
+  author_login: string
+  labels: GithubLabel[]
+  comments_count: number
+  milestone_due?: string
+  assignee_logins: string[]
+}
+
+export interface GithubPull {
+  number: number
+  title: string
+  html_url: string
+  updated_at: string
+  author_login: string
+  labels: GithubLabel[]
+  comments_count: number
+  milestone_due?: string
+  draft: boolean
+  requested_reviewer_logins: string[]
+  head_sha: string
+}
+
+export interface GithubSnapshotResponse {
+  repo?: string
+  login?: string
+  refreshed_at?: string
+  stale: boolean
+  issues: GithubIssue[]
+  pulls: GithubPull[]
+  issues_truncated: boolean
+  pulls_truncated: boolean
+  error?: string
+}
+
+export interface GithubComment {
+  author_login: string
+  created_at: string
+  body: string
+}
+
+export interface GithubItemDetail {
+  number: number
+  title: string
+  html_url: string
+  body?: string
+  body_too_large: boolean
+  comments: GithubComment[]
+  more_comments: boolean
+  commit_status?: string
+  error?: string
+}
+
+export interface TrackResult {
+  task_id: string
+  created: boolean
+}
+
+export interface GithubSummaryEntry {
+  project_id: string
+  repo: string
+  assigned_issues: number
+  review_pulls: number
+  refreshed_at?: string
 }

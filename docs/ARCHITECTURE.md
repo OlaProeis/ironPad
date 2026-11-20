@@ -497,9 +497,4 @@ Current design handles ~5000 files comfortably. For larger datasets:
 
 ### Features
 
-See `ai-context.md` for planned features:
-
-- Tag extraction and filtering
-- Graph view of note connections (builds on the backlinks index)
-- Export (PDF/HTML)
-- Custom themes
+See `ROADMAP.md` for planned features. Graph view builds on the backlinks index shipped in 0.3.0. Release 0.4.0 shipped on 2026-11-20. The three specs are `docs/ai-workflow/PRD-0.4.0.md` (task list, dashboard, and private Git backup), `docs/ai-workflow/PRD-0.4.0-library.md`, and `docs/ai-workflow/PRD-0.4.0-github.md`. Release 0.5.0 is proposed and has no PRD yet: runnable prompts, a weekly review file, waiting across projects, a capture strip, and project blueprints.

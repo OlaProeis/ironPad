@@ -17,16 +17,36 @@ mod services;
 mod watcher;
 mod websocket;
 
+/// Default bind range stays clear of common dev ports (3000 Grafana/React, 8080, etc.).
+const PORT_RANGE_START: u16 = 37_891;
+const PORT_RANGE_END: u16 = 37_990;
+
 /// Find an available port and return the bound listener.
 /// Avoids TOCTOU race by keeping the listener alive.
+///
+/// If `IRONPAD_PORT` is set, binds only that port (fails fast if busy).
+/// Otherwise scans [`PORT_RANGE_START`, `PORT_RANGE_END`].
 async fn find_available_port() -> (TcpListener, u16) {
-    for port in 3000..=3010 {
+    if let Ok(s) = std::env::var("IRONPAD_PORT") {
+        let port: u16 = s.trim().parse().unwrap_or_else(|_| {
+            panic!("IRONPAD_PORT must be a valid port number (1–65535), got {s:?}");
+        });
+        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        let listener = TcpListener::bind(addr).await.unwrap_or_else(|e| {
+            panic!("IRONPAD_PORT={port} but could not bind (port in use?): {e}");
+        });
+        return (listener, port);
+    }
+
+    for port in PORT_RANGE_START..=PORT_RANGE_END {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         if let Ok(listener) = TcpListener::bind(addr).await {
             return (listener, port);
         }
     }
-    panic!("No available ports in range 3000–3010");
+    panic!(
+        "No available ports in range {PORT_RANGE_START}–{PORT_RANGE_END}; set IRONPAD_PORT to a free port"
+    );
 }
 
 fn main() {
@@ -101,8 +121,12 @@ async fn run_server(port_tx: Option<std::sync::mpsc::Sender<u16>>) {
         .nest("/prompts", routes::prompts::router())
         // Git
         .nest("/git", routes::git::router())
+        // Library
+        .nest("/library", routes::library::router())
         // Projects
         .nest("/projects", routes::projects::router())
+        .nest("/projects", routes::github::project_github_router())
+        .route("/github/summary", get(routes::github::github_summary))
         // Daily notes
         .nest("/daily", routes::daily::router())
         // Assets

@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore, useTasksStore, useUiStore } from '../stores'
+import { countActiveOverdueTasks } from '../lib/dashboardProjectStats'
 import SearchPanel from './SearchPanel.vue'
 import TaskPanel from './TaskPanel.vue'
 import GitStatus from './GitStatus.vue'
@@ -24,6 +25,10 @@ watch(activeProjectId, async (id) => {
 
 const activeTasks = computed(() => tasksStore.activeTasks)
 const completedTasks = computed(() => tasksStore.completedTasks)
+
+const overdueCount = computed(() =>
+  countActiveOverdueTasks(tasksStore.tasks, new Date()),
+)
 
 function goToProjectOverview() {
   if (activeProjectId.value) {
@@ -54,6 +59,12 @@ function goToCalendar() {
 function goToProjectPrompts() {
   if (activeProjectId.value) {
     router.push({ name: 'project-prompts', params: { id: activeProjectId.value } })
+  }
+}
+
+function goToProjectGithub() {
+  if (activeProjectId.value) {
+    router.push({ name: 'project-github', params: { id: activeProjectId.value } })
   }
 }
 
@@ -119,7 +130,14 @@ function goToProjects() {
             :class="['nav-item', { active: route.name === 'project-prompts' }]"
             @click="goToProjectPrompts"
           >
-            Prompts
+            Library
+          </button>
+          <button
+            v-if="activeProjectId"
+            :class="['nav-item', { active: route.name === 'project-github' }]"
+            @click="goToProjectGithub"
+          >
+            ★ GitHub
           </button>
         </nav>
 
@@ -128,6 +146,15 @@ function goToProjects() {
           <div class="stat-item" @click="goToProjectTasks">
             <span class="stat-value">{{ activeTasks.length }}</span>
             <span class="stat-label">Active Tasks</span>
+          </div>
+          <div
+            v-if="overdueCount > 0"
+            class="stat-item stat-item-overdue"
+            :title="`${overdueCount} overdue`"
+            @click="goToProjectTasks"
+          >
+            <span class="stat-value">{{ overdueCount }}</span>
+            <span class="stat-label">Overdue</span>
           </div>
           <div class="stat-item" @click="goToProjectTasks">
             <span class="stat-value">{{ completedTasks.length }}</span>
@@ -249,6 +276,10 @@ function goToProjects() {
 
 .stat-item:hover {
   background: var(--color-border);
+}
+
+.stat-item-overdue .stat-value {
+  color: var(--color-danger);
 }
 
 .stat-value {

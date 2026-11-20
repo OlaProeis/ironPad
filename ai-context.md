@@ -1,285 +1,68 @@
-# AI Context — Ironpad
-
-## Rules for This File (READ FIRST)
-
-**What belongs in ai-context.md:**
-- Architecture and system design
-- Critical patterns and technical decisions
-- Active constraints and known issues
-- Key workflows and conventions
-- Active work items (In Progress)
-
-**What does NOT belong here:**
-- History of completed work → use `CHANGELOG.md`
-- Session handover notes → use `HANDOVER.md`
-- Feature wish lists → use `ROADMAP.md`
-- Full API documentation → use `docs/API.md`
-
-**When to update:**
-- Adding new critical patterns or constraints
-- Changing architecture decisions
-- Adding/removing in-progress items
-- Documenting new known issues
-
----
-
-## Project Overview
-
-**Ironpad** is a local-first, file-based personal project & knowledge management system.
-
-| Component | Technology |
-|-----------|------------|
-| Backend | Rust (Axum 0.8, Tokio) |
-| Frontend | Vue 3 (Vite, TypeScript) |
-| Editor | Milkdown (ProseMirror-based WYSIWYG) |
-| State | Pinia |
-| Data | Plain Markdown + YAML frontmatter |
-| Versioning | Local Git repository |
-| UI | System browser (no Electron) |
-
----
-
-## Core Principles
-
-1. **Files are the database** — filesystem is source of truth
-2. **Local-first** — works fully offline
-3. **External editing supported** — VS Code, Obsidian, Vim all work
-4. **Backend owns metadata** — `id`, `created`, `updated` are auto-managed
-5. **Low ceremony** — minimal config, no manual metadata editing
-
----
-
-## Architecture
-
-### Directory Structure
-
-```
-ironpad/
-├── backend/           # Rust Axum server
-│   └── src/
-│       ├── main.rs           # Server bootstrap, WebSocket, routes
-│       ├── routes/           # API endpoints
-│       ├── services/         # Business logic (filesystem, git, search, tasks)
-│       ├── models/           # Data structures
-│       └── watcher.rs        # File system watching
-├── frontend/          # Vue 3 SPA
-│   └── src/
-│       ├── App.vue           # Root component
-│       ├── router/           # Vue Router config
-│       ├── stores/           # Pinia stores
-│       ├── views/            # Route views
-│       ├── components/       # Reusable components
-│       ├── api/              # API client
-│       └── types/            # TypeScript types
-└── data/              # User data (separate git repo)
-    ├── prompts/       # Global prompts
-    ├── projects/      # Project folders
-    │   └── {project}/
-    │       ├── index.md      # Project overview
-    │       ├── notes/        # Project notes
-    │       ├── prompts/      # Project prompts
-    │       └── tasks/        # Task files (task-YYYYMMDD-HHMMSS.md)
-    ├── daily/         # Daily notes (YYYY-MM-DD.md)
-    ├── archive/       # Archived items
-    └── inbox.md       # Quick capture
-```
-
-### Key Technical Decisions
-
-| Decision | Choice |
-|----------|--------|
-| Data path | `../data` relative to backend |
-| Port | Dynamic 3000-3010 |
-| Auto-save | 1s debounce in frontend |
-| Git commits | 60s batch + manual button |
-| File watcher | notify crate, 500ms debounce |
-| Search | ripgrep CLI, fallback to manual |
-| Frontmatter | serde_yaml, auto-generated IDs |
-| Editor | Milkdown (WYSIWYG ProseMirror-based) |
-| State management | Pinia stores |
-| Routing | Vue Router (history mode) |
-| File locking | WebSocket-based, per-client locks |
-| Project note ID | `{slug}-index` format |
-| Task storage | Individual .md files in `tasks/` folder |
-| List sorting | By created date (stable) |
-| Backend mode | API-only (dev); frontend-serving + system tray (production) |
-| Theme | Dark by default, toggle to light, persists to localStorage |
-
----
-
-## Critical Patterns
-
-### Milkdown Editor Lifecycle
-
-The editor requires careful handling when switching content:
-
-```javascript
-// CORRECT order:
-editorContent.value = loadedContent  // 1. Set content first
-editorKey.value = noteId             // 2. Recreate editor
-
-// WRONG order (causes stale content):
-editorKey.value = noteId             // Editor recreates with empty/stale content
-editorContent.value = loadedContent  // Too late!
-```
-
-**Why:** The editor uses `defaultValue` from props at creation time. State in `MilkdownEditorCore` must be refs, not module-level variables.
-
-### Crepe Raw Reference (Vue Proxy Workaround)
-
-Milkdown's `Crepe` class uses ES private fields (`#editor`). Vue's reactive proxy breaks getter access to these fields because `this` becomes the proxy. Always use the raw reference stored at creation time:
-
-```javascript
-let crepeRaw: Crepe | null = null
-
-// In useEditor factory - store BEFORE Vue can wrap it:
-crepeRaw = crepe
-
-// CORRECT: use raw reference for programmatic updates
-crepeRaw.editor.action(replaceAll(newContent))
-
-// WRONG: get() returns a proxy-wrapped instance
-const crepe = get()
-crepe.editor.action(...)  // Fails - proxy can't access #editor
-```
-
-If the raw reference also fails, `MilkdownEditor.vue` supports a `force-remount` event that increments an internal key, destroying and recreating the editor with updated content.
-
-### Note ID vs Filename
-
-Project notes have two identifiers:
-- **Filename**: `20260227-153000` (used in routes and file paths)
-- **Frontmatter ID**: `ironpad-20260227-153000` (used in link targets and backlink index)
-
-When querying the backlinks API, always pass the **frontmatter ID** (`selectedNote.id`), not the filename (`currentNoteId`).
-
-### Atomic File Writes
-
-```rust
-// Pattern used in filesystem service
-let temp = path.with_extension("tmp");
-fs::write(&temp, content)?;
-fs::rename(temp, path)?;  // Atomic on most filesystems
-```
-
----
-
-## API Summary
-
-Key endpoints (see `docs/API.md` for complete reference):
-
-```
-Projects:   GET/POST    /api/projects
-           GET/PUT     /api/projects/:id
-           GET/PUT     /api/projects/:id/content
-
-Tasks:      GET/POST    /api/projects/:id/tasks
-           GET/PUT/DEL /api/projects/:id/tasks/:task_id
-           PUT         /api/projects/:id/tasks/:task_id/toggle
-           PUT         /api/projects/:id/tasks/:task_id/meta
-           POST/DEL    /api/projects/:id/tasks/:task_id/comments
-
-Notes:      GET/POST    /api/projects/:id/notes
-           GET/PUT/DEL /api/projects/:id/notes/:note_id
-           GET         /api/projects/:id/notes-titles
-           GET         /api/projects/:id/notes-search
-
-Backlinks:  GET         /api/backlinks/notes/:id/links
-           GET         /api/backlinks/notes/:id/backlinks
-           GET         /api/backlinks/notes/:id/forward-links
-           POST        /api/backlinks/links/rebuild
-           GET         /api/backlinks/links/stats
-
-Prompts:    GET/POST    /api/prompts
-           GET/PUT/DEL /api/prompts/:id
-           GET         /api/prompts/folders
-           GET         /api/prompts/search/semantic?q=
-
-Daily:      GET/POST    /api/daily/:date
-           GET         /api/daily/today
-
-Git:        GET         /api/git/status
-           POST        /api/git/commit
-           POST        /api/git/push
-           GET         /api/git/log
-           GET         /api/git/diff
-
-WebSocket:  WS          /ws
-```
-
----
-
-## Known Issues / Technical Debt
-
-1. **Axum nested route limitation**: Path parameters from parent routes are NOT automatically available in nested route handlers. Project task routes use explicit routes instead of `.nest()`.
-
-2. **Some warnings remain**: Unused methods in `locks.rs` and `git.rs` (reserved for future use).
-
----
-
-## Completed (v0.3.0)
-
-- [x] **Task time estimates** — `estimated_minutes` field for workload planning
-- [x] **Quick-add task** — Global floating button to create tasks from any view (Ctrl+Shift+A)
-- [x] **Priority colors** — Visual color indicators (High=red, Medium=yellow, Low=gray)
-- [x] **Backlinks between notes** — `/link` slash command, BacklinksPanel, link index with API
-
-## In Progress (v0.4.0)
-
-See `ROADMAP.md` for v0.4.0 planning.
-
----
-
-## Planned (Post v0.3.0)
-
-- UI polish and animations
-- Responsive sidebar
-- Global hotkey (Ctrl+Shift+Space)
-- Graph view of note connections
-- Export (PDF / HTML)
-- Custom themes
-- Tantivy search (if >5000 notes)
-- Task dependencies (blocked by)
-- Sort task list by due date / priority
-- Overdue indicator in sidebar and dashboard
-
----
-
-## Development
-
-```bash
-# Backend (from backend/)
-cargo run              # API server on :3000
-
-# Frontend (from frontend/)
-npm run dev            # Dev server on :5173
-npm run build          # Build to dist/
-```
-
-**Environment:**
-- Windows + PowerShell
-- Rust 2021 edition
-- Branch: `master`
-
----
-
-## Documentation Index
-
-See `docs/index.md` for complete documentation guide.
-
-Key docs:
-- `docs/API.md` — Complete REST API reference
-- `docs/ARCHITECTURE.md` — System design and technical details
-- `HANDOVER.md` — Session handover notes and next tasks
-- `ROADMAP.md` — Feature roadmap and release planning
-- `CHANGELOG.md` — Version history and completed work
-
----
-
-## AI Rules
-
-- Follow existing code patterns and conventions
-- Use Context7 MCP tool to fetch library documentation when needed
-- Prefer incremental, verifiable changes
-- File system is source of truth
-- No databases, no cloud services
+# Ironpad - AI Context
+
+This file is **whole-project** agent memory across all phases and task tags. It is not phase-scoped. Update it additively; never rewrite it for the current phase alone.
+
+## Rules (DO NOT UPDATE)
+- **Implementation sessions:** follow **Implementation Phase Rules** below only.
+- **Update sessions:** follow **Update Phase Rules** below only when you receive the update handover prompt.
+- Only do the task specified; do not start the next task or go over scope.
+- **Test policy:** run **only targeted tests** for what you changed (a single test binary, module, or test-name filter), within the handover's **Test & Resource Budget**. The full `python -m pytest` is run by cyclopsctl once after the implementation phase — the handover's Test & Resource Budget block says whether you may run it yourself at all. Never run any suite in the update phase. No VMs, containers, e2e/soak/benchmark suites, or background servers unless the task's Test Strategy names them as the deliverable.
+- Follow existing code patterns and conventions.
+- Use Context7 MCP to fetch library documentation when needed (resolve library ID first, then fetch docs). Task operations use **`cyclopsctl tasks` CLI only**.
+
+## Implementation Phase Rules
+When working from **`current-handover-prompt.md`** (the normal case for every cyclopsctl task cycle):
+
+- **DO:** Implement and test only the current parent task described in the handover.
+- **DO:** Meet the task Test Strategy within the handover's **Test & Resource Budget** using targeted tests only; follow the handover's rule about the full `python -m pytest` (by default cyclopsctl runs it for you). Anything under "Manual Verification" is for a human — skip it.
+- **DO:** Use Context7 MCP for up-to-date library documentation when implementing unfamiliar APIs or frameworks.
+- **DO NOT:** Read `prd.md` during cyclopsctl cycles — task scope, details, and test strategy are already in this handover.
+- **DO NOT:** Mark tasks done or change task status.
+- **DO NOT:** Run `cyclopsctl tasks next`, rewrite `current-handover-prompt.md`, or edit `ai-context.md`.
+- **DO NOT:** Create or update docs in `docs/`, or edit `docs/index.md`.
+- **DO NOT:** Edit `update-handover-prompt.md`.
+
+Task completion and all documentation updates happen only in the **update phase** (`update-handover-prompt.md`).
+
+## Update Phase Rules
+When `update-handover-prompt.md` is provided (after implementation in the same agent session):
+
+- **DO:** Follow every step in `update-handover-prompt.md`.
+- **DO:** Mark the current task done, update docs, and append durable facts with `cyclopsctl memory add --project-root G:\DEV\proman2k`.
+- **DO NOT:** Rewrite `current-handover-prompt.md`. Cyclopsctl writes the next handover from `cyclopsctl tasks next` after the update phase.
+- **DO NOT:** Store facts in `ai-context.md`. Facts live in `.cyclopsctl/memory/facts.jsonl` via `cyclopsctl memory add`.
+- **DO NOT:** Re-run `python -m pytest` or any test suite in the update phase.
+- **DO:** Use `cyclopsctl tasks` with `--project-root G:\DEV\proman2k` for all task commands (see Environment in the handover).
+- **DO:** Document by feature (e.g., `auth-layer.md`), not by task number; update `docs/index.md` when adding documentation.
+- **DO NOT:** Re-implement or extend the task you just finished.
+- **DO NOT:** Rewrite `ai-context.md` from scratch or treat it as phase-only context.
+
+## Conventions
+- **Documentation:** Feature-based names in `docs/` (e.g., `auth-layer.md`), not `task-1.md`. Update `docs/index.md` in the update phase only.
+- **Tasks:** `cyclopsctl tasks` CLI only from agents.
+
+## Handover Files
+| File | Who may edit | When |
+|------|----------------|------|
+| `current-handover-prompt.md` | Cyclopsctl | After the update phase, from `tasks next` |
+| `update-handover-prompt.md` | Human / template only | Never edited by agents |
+| `ai-context.md` | Update-phase agent only | Only when architecture/conventions change (additive); durable facts go to `cyclopsctl memory add`, not here |
+
+## Tech Stack
+![Tech Stack](docs/graphics/tech-stack.png), | Component | Technology |, |-----------|------------|, | Backend | Rust, Axum 0.8, Tokio |, | Frontend | Vue 3, Vite, TypeScript |, | Editor | Milkdown (ProseMirror-based) |, | State | Pinia |, | Routing | Vue Router |, | Data | Markdown + YAML frontmatter |, | Version Control | Git (via git2) |, | Search | ripgrep |
+
+## Architecture & Data Model
+See `prd.md` for product architecture. This file captures agent workflow rules and where project artifacts live.
+
+Release **0.4.0** is the current GitHub release (2026-11-20). All three 0.4 PRDs are done: task list, dashboard, and Git backup ([`docs/ai-workflow/PRD-0.4.0.md`](docs/ai-workflow/PRD-0.4.0.md)), Library ([`docs/ai-workflow/PRD-0.4.0-library.md`](docs/ai-workflow/PRD-0.4.0-library.md)), and GitHub issues and pull requests ([`docs/ai-workflow/PRD-0.4.0-github.md`](docs/ai-workflow/PRD-0.4.0-github.md)). The GitHub link is separate from Git backup of `data/`. There is no 0.5 PRD yet; the next scope is the proposal in [`ROADMAP.md`](ROADMAP.md). Notes are the `## [0.4.0] - 2026-11-20` section of [`CHANGELOG.md`](CHANGELOG.md).
+
+## Where Things Live
+| Want to... | Look in... |
+|------------|------------|
+| Product requirements | `prd.md` |
+| Release 0.4.0 scope and acceptance | `docs/ai-workflow/PRD-0.4.0.md` (task list, dashboard, Git backup), `docs/ai-workflow/PRD-0.4.0-library.md` (library), and `docs/ai-workflow/PRD-0.4.0-github.md` (GitHub issues and pull requests). Released 2026-11-20. Notes in `CHANGELOG.md`. Next proposal is 0.5.0 in `ROADMAP.md` (no PRD yet) |
+| Current implementation handover | `current-handover-prompt.md` |
+| Post-task update rules | `update-handover-prompt.md` |
+| Documentation map | `docs/index.md` |
+| Tasks and complexity | `.cyclopsctl/tasks/tasks.json`, `.cyclopsctl/reports/complexity-report.json` |
+| Cyclopsctl config | `cyclopsctl.toml` |

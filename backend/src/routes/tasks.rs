@@ -77,6 +77,9 @@ pub struct UpdateTaskMetaRequest {
     pub recurrence: Option<String>,
     pub recurrence_interval: Option<u32>,
     pub estimated_minutes: Option<u32>,
+    /// When `false`, clears completion. `true` is ignored — use the toggle endpoint to complete
+    /// (including recurring task spawn).
+    pub completed: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -346,7 +349,7 @@ fn parse_task_file(content: &str, path: &StdPath, project_id: &str) -> Option<Ta
     Some(extract_task_fields(&fm, path, project_id))
 }
 
-fn create_task_impl(
+pub(crate) fn create_task_impl(
     project_id: &str,
     title: &str,
     section: Option<&str>,
@@ -846,6 +849,14 @@ fn update_task_meta_impl(
             serde_yaml::Value::from(estimated_minutes as u64),
         );
     }
+    if let Some(completed) = meta.completed {
+        if !completed {
+            fm.insert(
+                serde_yaml::Value::from("completed"),
+                serde_yaml::Value::from(false),
+            );
+        }
+    }
 
     // Update timestamp
     let now = chrono::Utc::now().to_rfc3339();
@@ -1063,4 +1074,175 @@ fn list_all_tasks_impl() -> Result<Vec<Task>, String> {
     all_tasks.sort_by(|a, b| b.created.cmp(&a.created));
 
     Ok(all_tasks)
+}
+
+#[cfg(test)]
+mod meta_tests {
+    use super::*;
+    use std::sync::{Mutex, Once};
+    use uuid::Uuid;
+
+    static INIT: Once = Once::new();
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn ensure_test_data_dir() {
+        INIT.call_once(|| {
+            let base = std::env::temp_dir()
+                .join(format!("ironpad-task-meta-tests-{}", std::process::id()));
+            let _ = fs::create_dir_all(&base);
+            std::env::set_var("IRONPAD_DATA_DIR", &base);
+            config::init_data_dir();
+        });
+    }
+
+    fn write_task_file(
+        project_id: &str,
+        filename: &str,
+        completed: bool,
+        recurrence: Option<(&str, u32)>,
+    ) -> String {
+        let tasks_dir = ensure_tasks_dir(project_id).unwrap();
+        let task_path = tasks_dir.join(format!("{filename}.md"));
+        let task_id = format!("{project_id}-{filename}");
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let mut fm = serde_yaml::Mapping::new();
+        fm.insert(
+            serde_yaml::Value::from("id"),
+            serde_yaml::Value::from(task_id.clone()),
+        );
+        fm.insert(
+            serde_yaml::Value::from("type"),
+            serde_yaml::Value::from("task"),
+        );
+        fm.insert(
+            serde_yaml::Value::from("title"),
+            serde_yaml::Value::from("Test task"),
+        );
+        fm.insert(
+            serde_yaml::Value::from("completed"),
+            serde_yaml::Value::from(completed),
+        );
+        fm.insert(
+            serde_yaml::Value::from("section"),
+            serde_yaml::Value::from(if completed { "Completed" } else { "Active" }),
+        );
+        fm.insert(
+            serde_yaml::Value::from("priority"),
+            serde_yaml::Value::from("normal"),
+        );
+        fm.insert(
+            serde_yaml::Value::from("is_active"),
+            serde_yaml::Value::from(true),
+        );
+        fm.insert(
+            serde_yaml::Value::from("project_id"),
+            serde_yaml::Value::from(project_id),
+        );
+        fm.insert(
+            serde_yaml::Value::from("created"),
+            serde_yaml::Value::from(now.clone()),
+        );
+        fm.insert(
+            serde_yaml::Value::from("updated"),
+            serde_yaml::Value::from(now),
+        );
+        if let Some((rec, interval)) = recurrence {
+            fm.insert(
+                serde_yaml::Value::from("recurrence"),
+                serde_yaml::Value::from(rec),
+            );
+            fm.insert(
+                serde_yaml::Value::from("recurrence_interval"),
+                serde_yaml::Value::from(interval as u64),
+            );
+        }
+
+        let body = "# Test task\n\n";
+        let content = frontmatter::serialize_frontmatter(&fm, body).unwrap();
+        filesystem::atomic_write(&task_path, content.as_bytes()).unwrap();
+        task_id
+    }
+
+    fn count_task_files(project_id: &str) -> usize {
+        let tasks_dir = get_tasks_dir(project_id);
+        fs::read_dir(&tasks_dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"))
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn meta_completed_false_clears_completion() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        ensure_test_data_dir();
+        let project_id = format!("meta-false-{}", Uuid::new_v4());
+        let filename = "task-meta-false";
+        let task_id = write_task_file(&project_id, filename, true, None);
+
+        let task = update_task_meta_impl(
+            &project_id,
+            &task_id,
+            UpdateTaskMetaRequest {
+                title: None,
+                section: None,
+                priority: None,
+                due_date: None,
+                is_active: None,
+                tags: None,
+                recurrence: None,
+                recurrence_interval: None,
+                estimated_minutes: None,
+                completed: Some(false),
+            },
+        )
+        .expect("meta update");
+
+        assert!(!task.completed);
+        let raw = fs::read_to_string(find_task_path(&project_id, &task_id).unwrap()).unwrap();
+        let (fm, _, _) = frontmatter::parse_frontmatter(&raw);
+        assert_eq!(frontmatter::get_bool_or(&fm, "completed", true), false);
+    }
+
+    #[test]
+    fn meta_completed_true_ignored_no_recurrence_spawn() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        ensure_test_data_dir();
+        let project_id = format!("meta-true-{}", Uuid::new_v4());
+        let filename = "task-meta-true";
+        let task_id = write_task_file(&project_id, filename, false, Some(("daily", 1)));
+
+        let before = count_task_files(&project_id);
+        let task = update_task_meta_impl(
+            &project_id,
+            &task_id,
+            UpdateTaskMetaRequest {
+                title: None,
+                section: None,
+                priority: None,
+                due_date: None,
+                is_active: None,
+                tags: None,
+                recurrence: None,
+                recurrence_interval: None,
+                estimated_minutes: None,
+                completed: Some(true),
+            },
+        )
+        .expect("meta update");
+
+        assert!(!task.completed);
+        assert_eq!(count_task_files(&project_id), before);
+    }
+
+    #[test]
+    fn update_task_meta_request_deserializes_completed() {
+        let json = r#"{"completed":false}"#;
+        let req: UpdateTaskMetaRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.completed, Some(false));
+    }
 }

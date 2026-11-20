@@ -38,6 +38,12 @@ const router = createRouter({
       props: true
     },
     {
+      path: '/projects/:id/github',
+      name: 'project-github',
+      component: () => import('../views/GitHubView.vue'),
+      props: true
+    },
+    {
       path: '/prompts/:promptId?',
       name: 'prompts',
       component: () => import('../views/PromptsView.vue'),

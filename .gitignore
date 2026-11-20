@@ -2,6 +2,7 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+.env
 
 # === Editors / IDEs ===
 .idea/
@@ -46,3 +47,10 @@ release/
 
 # === Generated images (article assets, not source) ===
 /assets/
+# Cyclopsctl (added by cyclopsctl init)
+cyclopsctl.toml
+.cyclopsctl/
+
+# === Python ===
+__pycache__/
+*.pyc

@@ -149,9 +149,9 @@ function goToGlobalPrompts() {
       <button
         @click="goToGlobalPrompts"
         :class="{ active: route.name === 'prompts' }"
-        title="Global Prompts"
+        title="Global Library"
       >
-        Prompts
+        Library
       </button>
       <button 
         class="theme-toggle"

@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { GitStatus, CommitInfo, CommitDetail, DiffInfo, RemoteInfo } from '../types'
+import type { GitStatus, CommitInfo, CommitDetail, DiffInfo, RemoteInfo, SetRemoteResponse } from '../types'
+import { submitSetRemote } from '../lib/gitRemoteSetup'
+import { submitPull } from '../lib/gitPull'
 import { gitApi } from '../api/client'
 
 export const useGitStore = defineStore('git', () => {
@@ -10,6 +12,9 @@ export const useGitStore = defineStore('git', () => {
   const committing = ref(false)
   const pushing = ref(false)
   const fetching = ref(false)
+  const pulling = ref(false)
+  const pullMessage = ref<string | null>(null)
+  const settingRemote = ref(false)
   const error = ref<string | null>(null)
   const conflicts = ref<string[]>([])
   
@@ -97,6 +102,26 @@ export const useGitStore = defineStore('git', () => {
     }
   }
 
+  async function pull() {
+    try {
+      pulling.value = true
+      error.value = null
+      pullMessage.value = null
+      const result = await submitPull()
+      if (!result.success) {
+        error.value = result.message
+        return
+      }
+      pullMessage.value = result.message
+      await Promise.all([loadStatus(), loadRemote(), loadHistory(), loadWorkingDiff()])
+    } catch (err) {
+      error.value = `Pull failed: ${err}`
+      throw err
+    } finally {
+      pulling.value = false
+    }
+  }
+
   async function checkConflicts() {
     try {
       error.value = null
@@ -153,6 +178,19 @@ export const useGitStore = defineStore('git', () => {
     }
   }
 
+  async function setRemoteOrigin(url: string): Promise<SetRemoteResponse> {
+    try {
+      settingRemote.value = true
+      const result = await submitSetRemote(url)
+      if (result.success) {
+        await loadRemote()
+      }
+      return result
+    } finally {
+      settingRemote.value = false
+    }
+  }
+
   function clearSelectedCommit() {
     selectedCommitId.value = null
     selectedCommitDiff.value = null
@@ -182,6 +220,9 @@ export const useGitStore = defineStore('git', () => {
     committing,
     pushing,
     fetching,
+    pulling,
+    pullMessage,
+    settingRemote,
     error,
     conflicts,
     history,
@@ -206,11 +247,13 @@ export const useGitStore = defineStore('git', () => {
     commit,
     push,
     fetchRemote,
+    pull,
     checkConflicts,
     loadHistory,
     loadWorkingDiff,
     loadCommitDiff,
     loadRemote,
+    setRemoteOrigin,
     clearSelectedCommit,
     togglePanel,
     clearError

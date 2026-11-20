@@ -24,6 +24,7 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub created: String,
+    pub github_repo: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -32,6 +33,7 @@ pub struct ProjectWithContent {
     pub name: String,
     pub path: String,
     pub created: String,
+    pub github_repo: Option<String>,
     pub content: String,
 }
 
@@ -69,6 +71,12 @@ pub struct ProjectNoteWithContent {
 #[derive(Debug, Deserialize)]
 pub struct CreateNoteRequest {
     pub title: Option<String>,
+}
+
+fn github_repo_from_frontmatter(fm: &serde_yaml::Mapping) -> Option<String> {
+    fm.get(&serde_yaml::Value::from("github_repo"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
 }
 
 pub fn router() -> Router {
@@ -227,6 +235,7 @@ fn list_projects_impl() -> Result<Vec<Project>, String> {
             name,
             path: format!("projects/{}", id),
             created,
+            github_repo: github_repo_from_frontmatter(&fm),
         });
     }
 
@@ -262,6 +271,7 @@ async fn get_project(Path(id): Path<String>) -> impl IntoResponse {
                 name,
                 path: format!("projects/{}", id),
                 created,
+                github_repo: github_repo_from_frontmatter(&fm),
             })
             .into_response()
         }
@@ -352,6 +362,7 @@ fn create_project_impl(name: &str) -> Result<Project, String> {
         name: name.to_string(),
         path: format!("projects/{}", slug),
         created: now,
+        github_repo: None,
     })
 }
 
@@ -386,6 +397,7 @@ async fn get_project_content(Path(id): Path<String>) -> impl IntoResponse {
                 name,
                 path: format!("projects/{}", id),
                 created,
+                github_repo: github_repo_from_frontmatter(&fm),
                 content: body,
             })
             .into_response()
@@ -467,6 +479,7 @@ async fn update_project_content(Path(id): Path<String>, body: String) -> impl In
         name,
         path: format!("projects/{}", id),
         created,
+        github_repo: github_repo_from_frontmatter(&fm),
         content: body,
     })
     .into_response()
@@ -1112,4 +1125,67 @@ async fn search_project_notes(
     results.truncate(limit);
 
     Json(NotesSearchResponse { query, results }).into_response()
+}
+
+#[cfg(test)]
+mod list_projects_tests {
+    use super::*;
+    use std::sync::{Mutex, Once};
+
+    static INIT: Once = Once::new();
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn ensure_test_data_dir() -> std::path::PathBuf {
+        INIT.call_once(|| {
+            let base = std::env::temp_dir().join(format!(
+                "ironpad-projects-github-repo-tests-{}",
+                std::process::id()
+            ));
+            let _ = fs::create_dir_all(&base);
+            std::env::set_var("IRONPAD_DATA_DIR", &base);
+            config::init_data_dir();
+        });
+        config::data_dir().to_path_buf()
+    }
+
+    fn write_project_index(projects_root: &std::path::Path, slug: &str, frontmatter_extra: &str) {
+        let project_dir = projects_root.join(slug);
+        fs::create_dir_all(&project_dir).unwrap();
+        let content = format!(
+            "---\nid: {slug}-index\ntype: project\ntitle: Test Project\ncreated: 2020-01-01T00:00:00Z\n{frontmatter_extra}---\n\n# Test\n"
+        );
+        fs::write(project_dir.join("index.md"), content).unwrap();
+    }
+
+    #[test]
+    fn list_projects_impl_reads_github_repo_from_frontmatter() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        let data = ensure_test_data_dir();
+        let projects_root = data.join("projects");
+        fs::create_dir_all(&projects_root).unwrap();
+        write_project_index(&projects_root, "with-repo", "github_repo: owner/repo\n");
+
+        let projects = list_projects_impl().expect("list projects");
+        let project = projects
+            .iter()
+            .find(|p| p.id == "with-repo")
+            .expect("project with-repo");
+        assert_eq!(project.github_repo.as_deref(), Some("owner/repo"));
+    }
+
+    #[test]
+    fn list_projects_impl_github_repo_none_when_absent() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        let data = ensure_test_data_dir();
+        let projects_root = data.join("projects");
+        fs::create_dir_all(&projects_root).unwrap();
+        write_project_index(&projects_root, "no-repo", "");
+
+        let projects = list_projects_impl().expect("list projects");
+        let project = projects
+            .iter()
+            .find(|p| p.id == "no-repo")
+            .expect("project no-repo");
+        assert_eq!(project.github_repo, None);
+    }
 }

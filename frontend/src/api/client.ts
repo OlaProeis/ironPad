@@ -15,17 +15,26 @@ import type {
   CommitDetail,
   DiffInfo,
   RemoteInfo,
+  SetRemoteResponse,
   DailyNote,
   Prompt,
   PromptSummary,
   PromptFolder,
   PromptSearchResult,
+  BrowseResponse,
+  LibraryPickResponse,
+  OpenLibraryResponse,
+  PromptKind,
   NoteLinksResponse,
   NoteTitleEntry,
   Backlink,
   ForwardLink,
   ProjectNotesTitlesResponse,
-  ProjectNotesSearchResponse
+  ProjectNotesSearchResponse,
+  GithubSnapshotResponse,
+  GithubItemDetail,
+  TrackResult,
+  GithubSummaryEntry,
 } from '../types'
 
 const API_BASE = '/api'
@@ -156,7 +165,7 @@ export const tasksApi = {
     }),
   
   // Update task metadata
-  updateMeta: (projectId: string, taskId: string, meta: { title?: string; section?: string; priority?: string; due_date?: string; is_active?: boolean; tags?: string[]; recurrence?: string; recurrence_interval?: number; estimated_minutes?: number }) =>
+  updateMeta: (projectId: string, taskId: string, meta: { title?: string; section?: string; priority?: string; due_date?: string; is_active?: boolean; tags?: string[]; recurrence?: string; recurrence_interval?: number; estimated_minutes?: number; completed?: boolean }) =>
     request<Task>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/meta`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -203,7 +212,10 @@ export const promptsApi = {
     return request<PromptSummary[]>(`/prompts${suffix}`)
   },
 
-  get: (id: string) => request<Prompt>(`/prompts/${encodeURIComponent(id)}`),
+  get: (id: string, root?: string) => {
+    const suffix = root ? `?root=${encodeURIComponent(root)}` : ''
+    return request<Prompt>(`/prompts/${encodeURIComponent(id)}${suffix}`)
+  },
 
   create: (payload: {
     scope?: string
@@ -213,6 +225,9 @@ export const promptsApi = {
     tags?: string[]
     description?: string
     content?: string
+    kind?: PromptKind
+    source?: string
+    template?: boolean
   }) =>
     request<Prompt>('/prompts', {
       method: 'POST',
@@ -226,6 +241,9 @@ export const promptsApi = {
     tags?: string[]
     description?: string
     content?: string
+    kind?: PromptKind
+    source?: string
+    template?: boolean
   }) =>
     request<Prompt>(`/prompts/${encodeURIComponent(id)}`, {
       method: 'PUT',
@@ -262,6 +280,74 @@ export const promptsApi = {
   }
 }
 
+// GitHub API (project snapshot, detail, track, dashboard summary)
+export const githubApi = {
+  getSnapshot: (projectId: string) =>
+    request<GithubSnapshotResponse>(
+      `/projects/${encodeURIComponent(projectId)}/github`
+    ),
+
+  putRepo: (projectId: string, repo: string | null) =>
+    request<void | { repo: string }>(
+      `/projects/${encodeURIComponent(projectId)}/github`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo }),
+      }
+    ),
+
+  refresh: (projectId: string) =>
+    request<GithubSnapshotResponse>(
+      `/projects/${encodeURIComponent(projectId)}/github/refresh`,
+      { method: 'POST' }
+    ),
+
+  getIssue: (projectId: string, number: number) =>
+    request<GithubItemDetail>(
+      `/projects/${encodeURIComponent(projectId)}/github/issues/${number}`
+    ),
+
+  getPull: (projectId: string, number: number) =>
+    request<GithubItemDetail>(
+      `/projects/${encodeURIComponent(projectId)}/github/pulls/${number}`
+    ),
+
+  trackIssue: (projectId: string, number: number) =>
+    request<TrackResult>(
+      `/projects/${encodeURIComponent(projectId)}/github/issues/${number}/track`,
+      { method: 'POST' }
+    ),
+
+  trackPull: (projectId: string, number: number) =>
+    request<TrackResult>(
+      `/projects/${encodeURIComponent(projectId)}/github/pulls/${number}/track`,
+      { method: 'POST' }
+    ),
+
+  getSummary: () => request<GithubSummaryEntry[]>('/github/summary'),
+}
+
+// Library API (link browsing and open-in-OS)
+export const libraryApi = {
+  browseLibrary: (path: string) =>
+    request<BrowseResponse>(`/library/browse?path=${encodeURIComponent(path)}`),
+
+  openLibraryItem: (id: string, root?: string) =>
+    request<OpenLibraryResponse>('/library/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(root ? { id, root } : { id }),
+    }),
+
+  pickLibrary: (kind: 'file' | 'directory', directory?: string) =>
+    request<LibraryPickResponse>('/library/pick', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(directory ? { kind, directory } : { kind }),
+    }),
+}
+
 // Git API
 export const gitApi = {
   status: () => request<GitStatus>('/git/status'),
@@ -296,9 +382,48 @@ export const gitApi = {
   
   // Remote repository info
   remote: () => request<RemoteInfo | null>('/git/remote'),
+
+  setRemote: async (url: string): Promise<SetRemoteResponse> => {
+    const res = await fetch(`${API_BASE}/git/remote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+    const contentType = res.headers.get('content-type')
+    if (contentType?.includes('application/json')) {
+      return res.json()
+    }
+    const text = await res.text()
+    return {
+      success: false,
+      message: text || `HTTP ${res.status}`,
+      url: '',
+      replaced: false,
+      fetch_error: null,
+    }
+  },
   
   // Fetch from remote
-  fetch: () => request<{ success: boolean; message: string }>('/git/fetch', { method: 'POST' })
+  fetch: () => request<{ success: boolean; message: string }>('/git/fetch', { method: 'POST' }),
+
+  pull: async (): Promise<{ success: boolean; message: string; commits: number }> => {
+    const res = await fetch(`${API_BASE}/git/pull`, { method: 'POST' })
+    const contentType = res.headers.get('content-type')
+    if (contentType?.includes('application/json')) {
+      const body = await res.json()
+      return {
+        success: Boolean(body.success),
+        message: String(body.message ?? ''),
+        commits: Number(body.commits ?? 0),
+      }
+    }
+    const text = await res.text()
+    return {
+      success: false,
+      message: text || `HTTP ${res.status}`,
+      commits: 0,
+    }
+  },
 }
 
 // Daily Notes API

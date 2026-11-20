@@ -2,6 +2,48 @@
 
 All notable changes to Ironpad are documented here.
 
+## [Unreleased]
+
+## [0.4.0] - 2026-11-20
+
+### Added
+- **Task list sort** — Project task view (`TasksView`) can sort top-level tasks by **created** (newest first, default), **due date** (earliest first; no due date last), or **priority** (high → medium → low → unset). The same mode applies in Active, Backlog, and Completed. **Subtasks stay under their parent** in existing order. The choice persists in `localStorage` and survives reload.
+- **Sidebar overdue count** — Quick stats on the sidebar show an **overdue** figure for the **active project** when it is greater than zero (click opens that project’s task list). A task due **today** is not overdue. The count uses the same calendar-day rule as dashboard project cards, so **sidebar and dashboard agree** for the same project.
+- **Dashboard filter by task tag** — Tag chips across the top list each distinct task tag (A–Z) with incomplete-task counts. One tag at a time filters every project card to incomplete tasks with that tag; clearing the active chip **restores the full dashboard**. Empty filter state names the tag and offers clear.
+- **Fit the day (calendar day view)** — Day view shows **used / budget** minutes and a progress bar from task estimates. Default budget is **6 hours**; the user can change it (1–24 hours) in day view and the value is remembered in `localStorage`. The bar turns **amber** when used exceeds budget. Month and week views keep their existing total label only.
+- **Bulk task actions** — Multi-select on **top-level** tasks in the project task view (subtasks are not selectable). Actions: mark complete, move to Active, move to Backlog, add tag, remove tag. **Mark complete** skips already-completed tasks and still runs **recurring** spawn behavior via the existing toggle path. **Move** and **tag** updates keep `completed` and `section` consistent (e.g. moving a completed task to Active or Backlog sets `completed` false). Requests run **sequentially**; the first failure stops with task title and error, earlier saves are kept, then the list reloads.
+- **Private Git backup in the app**:
+  - Save a private **HTTPS or SSH** URL as `origin` from the Git panel (`POST /api/git/remote`). **URLs with embedded credentials are rejected**.
+  - **Pull** (`POST /api/git/pull`) fast-forwards from upstream; **diverged histories change no files**. Fetch remains separate.
+  - **Push** sets upstream on first success so **ahead/behind** reflect the remote afterward.
+  - Actionable UI copy for auth failure, non-fast-forward push, non-fast-forward pull, dirty tree blocking pull, missing remote, and unreachable host (per product error map).
+  - [`docs/git-backup.md`](docs/git-backup.md) linked from the Git panel — **async backup**, not live co-editing.
+- **Library** (Prompts screen; routes and `/api/prompts` unchanged):
+  - UI label **Library** in the top bar and project sidebar; storage stays `data/prompts/` and project prompt folders.
+  - **Link** pointers (`kind: link`, `source`, optional `template`) read files on disk at open/reload; Save updates the pointer only.
+  - Project links use a folder root in browser `localStorage`; global links use absolute paths.
+  - `GET /api/prompts/:id?root=` returns `read_only`, `resolved_path`, `source_missing`, `root_required`, `source_error`, and `supports_rendered` for links.
+  - `GET /api/library/browse?path=` for non-recursive directory pick; `POST /api/library/open` opens a link by id with the OS default app.
+  - Raw and rendered reading modes, collapsible Versions (Git), copy bundle, suggested `ai-context.md` / `ROADMAP.md` / `docs/index.md`, Add link browse/paste, template links with `{{variables}}`. Spec: [`docs/ai-workflow/PRD-0.4.0-library.md`](docs/ai-workflow/PRD-0.4.0-library.md).
+  - A prompt with no `kind` still opens, edits, and saves as before. Adding a link writes a pointer only and does not copy the source into `data/`. Delete removes the pointer and leaves the file. A missing file stays in the list and can be relinked. Files over **1 MiB**, directories, and suffixes outside the allowed list are refused.
+  - **Raw / Rendered** is remembered per item. Markdown links open on rendered; other allowed files stay raw. Saving a prompt writes the raw draft, including when the pane is on rendered. `{{variables}}` are substituted only for prompts and for links with **Template** turned on, and only in memory.
+  - **Versions (Git)** starts collapsed and remembers that choice. An expanded prompt still shows that file’s Git log. An expanded link does not list Ironpad commits as the linked file’s history.
+  - **Copy bundle** puts the selected prompts (raw body) and links (current source text) in one markdown blob, with no variable substitution. **Open externally** and **Copy path** use the resolved source. A missing file does not open.
+- **GitHub link** (separate from Remote backup of `data/`):
+  - Link **one repository per project** as `owner/name` on github.com. A URL, a `.git` suffix, or an empty value is rejected. Saving the link does not change the notes repo’s `origin`. Remove deletes the link and the snapshot and leaves a task created earlier in place.
+  - **GitHub** sidebar view with open **issues** and **pull requests** in separate lists. A pull request is not shown as an issue. Issue filters: **All open** (default), **Assigned to me**, **Created by me**. Pull request filters: **All open**, **Mine**, **Review requested**. The choice survives reload.
+  - Refresh when the snapshot is missing or older than 15 minutes, from manual **Refresh**, and on a 15-minute timer while the view is open. An unchanged poll keeps the current rows and updates the shown time. A failed refresh keeps the previous rows. The snapshot directory is outside `data/`.
+  - Read item **body** and up to **30 comments** (and PR **commit status**) without writing to GitHub.
+  - **Track as task** copies an issue or PR into one local Active task (title, labels as tags, milestone date when present, `github_url`, `github_number`). Tracking the same URL again opens that task. Completing the task does not close the GitHub item and does not call GitHub.
+  - Authentication via **`gh auth token`** or **`GH_TOKEN`** / **`GITHUB_TOKEN`**. There is no token field, and no token stored in `data/`, API responses, or logs. With none of the three, the view asks for `gh auth login` or `GH_TOKEN`.
+  - **Dashboard** project cards show assigned-issue and review-request counts from the last snapshot, and hide that line when both are zero.
+  - User guide: [`docs/github-link.md`](docs/github-link.md). Spec: [`docs/ai-workflow/PRD-0.4.0-github.md`](docs/ai-workflow/PRD-0.4.0-github.md).
+
+### Changed
+- **Prompts → Library** — navigation and headings say Library; API paths and prompt file layout are unchanged.
+- **Backend listen port** — Default scan range is **37891–37990** instead of 3000–3010, to avoid collisions with Grafana, React dev servers, and other stacks. Optional **`IRONPAD_PORT`** binds a single port (fails fast if busy). Startup logs the URL to open. Vite dev proxy defaults to **37891**; set `IRONPAD_PORT` when running `npm run dev` if the backend uses another port in the range.
+- **Task meta API** — `UpdateTaskMetaRequest` accepts optional `completed` so bulk section moves can clear completed without using toggle (toggle remains the path that spawns the next recurring instance).
+
 ## [0.3.0] - 2026-02-27
 
 ### Added

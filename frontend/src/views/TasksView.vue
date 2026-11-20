@@ -5,6 +5,27 @@ import { useTasksStore, useProjectsStore, useWorkspaceStore, useGitStore } from 
 import { useWebSocket } from '../composables/useWebSocket'
 import MilkdownEditor from '../components/MilkdownEditor.vue'
 import type { Task } from '../types'
+import {
+  sortTopLevelTasks,
+  readSortMode,
+  writeSortMode,
+  type TaskSortMode,
+} from '../lib/taskSort'
+import {
+  clearMultiSelect,
+  isMultiSelected,
+  pruneMultiSelect,
+  toggleMultiSelect,
+} from '../lib/taskMultiSelect'
+import {
+  metaForSectionMove,
+  normalizeTag,
+  runBulkComplete,
+  runBulkMetaUpdates,
+  tagsAfterAdd,
+  tagsAfterRemove,
+  type BulkRunResult,
+} from '../lib/bulkTaskActions'
 
 const props = defineProps<{
   id: string
@@ -47,6 +68,25 @@ const editingTitle = ref('')
 // Tag filter
 const activeTagFilter = ref<string | null>(null)
 
+// Bulk multi-select (top-level tasks only)
+const multiSelectedIds = ref<Set<string>>(new Set())
+const bulkRunning = ref(false)
+const bulkError = ref<string | null>(null)
+
+const taskSortOptions: { value: TaskSortMode; label: string }[] = [
+  { value: 'created', label: 'Created' },
+  { value: 'due_date', label: 'Due date' },
+  { value: 'priority', label: 'Priority' },
+]
+
+const sortMode = ref<TaskSortMode>(readSortMode())
+
+function onSortModeChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as TaskSortMode
+  sortMode.value = value
+  writeSortMode(value)
+}
+
 // Tag editing
 const newTagInput = ref('')
 const showTagInput = ref(false)
@@ -74,19 +114,31 @@ function priorityClass(priority?: string): string {
 const filteredActiveTasks = computed(() => {
   let tasks = tasksStore.activeTasks.filter(isTopLevel)
   if (activeTagFilter.value) tasks = tasks.filter(t => t.tags?.includes(activeTagFilter.value!))
-  return tasks
+  return sortTopLevelTasks(tasks, sortMode.value)
 })
 
 const filteredBacklogTasks = computed(() => {
   let tasks = tasksStore.backlogTasks.filter(isTopLevel)
   if (activeTagFilter.value) tasks = tasks.filter(t => t.tags?.includes(activeTagFilter.value!))
-  return tasks
+  return sortTopLevelTasks(tasks, sortMode.value)
 })
 
 const filteredCompletedTasks = computed(() => {
   let tasks = tasksStore.completedTasks.filter(isTopLevel)
   if (activeTagFilter.value) tasks = tasks.filter(t => t.tags?.includes(activeTagFilter.value!))
-  return tasks
+  return sortTopLevelTasks(tasks, sortMode.value)
+})
+
+const visibleTopLevelTaskIds = computed(() => {
+  const ids = new Set<string>()
+  for (const task of [
+    ...filteredActiveTasks.value,
+    ...filteredBacklogTasks.value,
+    ...filteredCompletedTasks.value,
+  ]) {
+    ids.add(task.id)
+  }
+  return ids
 })
 
 // Subtask creation
@@ -123,6 +175,130 @@ function selectTask(task: Task) {
 
 function isSelected(task: Task) {
   return task.id === currentTaskId.value
+}
+
+function isMultiSelectChecked(taskId: string): boolean {
+  return isMultiSelected(multiSelectedIds.value, taskId)
+}
+
+function onMultiSelectToggle(task: Task, event: Event) {
+  event.stopPropagation()
+  multiSelectedIds.value = toggleMultiSelect(multiSelectedIds.value, task.id)
+  bulkError.value = null
+}
+
+function selectedBulkTasks(): Task[] {
+  const selected: Task[] = []
+  for (const id of multiSelectedIds.value) {
+    const task = tasksStore.tasks.find((candidate) => candidate.id === id)
+    if (task) selected.push(task)
+  }
+  return selected
+}
+
+async function finishBulk(result: BulkRunResult) {
+  await tasksStore.loadProjectTasks(projectId.value)
+  if (currentTaskId.value) {
+    await tasksStore.loadTask(projectId.value, currentTaskId.value)
+  }
+  if (result.ok) {
+    multiSelectedIds.value = clearMultiSelect()
+    bulkError.value = null
+  } else if (result.failure) {
+    bulkError.value = `${result.failure.title}: ${result.failure.error}`
+  }
+}
+
+async function bulkMarkComplete() {
+  if (bulkRunning.value) return
+  const tasks = selectedBulkTasks()
+  if (tasks.length === 0) return
+  bulkRunning.value = true
+  bulkError.value = null
+  try {
+    const result = await runBulkComplete(projectId.value, tasks)
+    await finishBulk(result)
+  } finally {
+    bulkRunning.value = false
+  }
+}
+
+async function bulkMove(section: 'Active' | 'Backlog') {
+  if (bulkRunning.value) return
+  const tasks = selectedBulkTasks()
+  if (tasks.length === 0) return
+  bulkRunning.value = true
+  bulkError.value = null
+  try {
+    const result = await runBulkMetaUpdates(
+      projectId.value,
+      tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        meta: metaForSectionMove(task, section),
+      })),
+    )
+    await finishBulk(result)
+  } finally {
+    bulkRunning.value = false
+  }
+}
+
+function promptBulkTag(label: string): string | null {
+  const raw = window.prompt(label)
+  if (raw === null) return null
+  const tag = normalizeTag(raw)
+  if (!tag) {
+    bulkError.value = 'Tag cannot be empty'
+    return null
+  }
+  return tag
+}
+
+async function bulkAddTag() {
+  if (bulkRunning.value) return
+  const tag = promptBulkTag('Add tag')
+  if (!tag) return
+  const tasks = selectedBulkTasks()
+  if (tasks.length === 0) return
+  bulkRunning.value = true
+  bulkError.value = null
+  try {
+    const result = await runBulkMetaUpdates(
+      projectId.value,
+      tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        meta: { tags: tagsAfterAdd(task.tags, tag) },
+      })),
+    )
+    await finishBulk(result)
+  } finally {
+    bulkRunning.value = false
+  }
+}
+
+async function bulkRemoveTag() {
+  if (bulkRunning.value) return
+  const tag = promptBulkTag('Remove tag')
+  if (!tag) return
+  const tasks = selectedBulkTasks()
+  if (tasks.length === 0) return
+  bulkRunning.value = true
+  bulkError.value = null
+  try {
+    const result = await runBulkMetaUpdates(
+      projectId.value,
+      tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        meta: { tags: tagsAfterRemove(task.tags, tag) },
+      })),
+    )
+    await finishBulk(result)
+  } finally {
+    bulkRunning.value = false
+  }
 }
 
 // ============ Task Creation ============
@@ -593,10 +769,19 @@ watch(projectId, () => {
   clearPendingSave()
   editorContent.value = ''
   lastSavedContent.value = null
+  multiSelectedIds.value = clearMultiSelect()
   
   tasksStore.loadProjectTasks(projectId.value)
   tasksStore.clearSelectedTask()
 }, { immediate: true })
+
+watch(() => workspaceStore.activeProjectId, () => {
+  multiSelectedIds.value = clearMultiSelect()
+})
+
+watch(visibleTopLevelTaskIds, (ids) => {
+  multiSelectedIds.value = pruneMultiSelect(multiSelectedIds.value, ids)
+})
 
 watch(currentTaskId, async (taskId, oldTaskId) => {
   console.log('[TasksView] currentTaskId changed:', { oldTaskId, taskId, pendingSaveTaskId })
@@ -648,6 +833,7 @@ watch(() => tasksStore.selectedTask, (task) => {
 // ============ Lifecycle ============
 
 onMounted(async () => {
+  sortMode.value = readSortMode()
   await projectsStore.loadProject(projectId.value)
   
   if (workspaceStore.activeProjectId !== projectId.value) {
@@ -703,6 +889,20 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <div class="sort-bar">
+        <label class="sort-label" for="task-sort-select">Sort</label>
+        <select
+          id="task-sort-select"
+          class="sort-select"
+          :value="sortMode"
+          @change="onSortModeChange"
+        >
+          <option v-for="opt in taskSortOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+      </div>
+
       <!-- Tag Filter -->
       <div v-if="tasksStore.projectTags.length > 0" class="tag-filter-bar">
         <button
@@ -717,6 +917,16 @@ onUnmounted(() => {
         >{{ tag }}</button>
       </div>
 
+      <div v-if="multiSelectedIds.size > 0" class="bulk-bar">
+        <span class="bulk-count">{{ multiSelectedIds.size }} selected</span>
+        <button type="button" class="small" :disabled="bulkRunning" @click="bulkMarkComplete">Mark complete</button>
+        <button type="button" class="small" :disabled="bulkRunning" @click="bulkMove('Active')">Move to Active</button>
+        <button type="button" class="small" :disabled="bulkRunning" @click="bulkMove('Backlog')">Move to Backlog</button>
+        <button type="button" class="small" :disabled="bulkRunning" @click="bulkAddTag">Add tag</button>
+        <button type="button" class="small" :disabled="bulkRunning" @click="bulkRemoveTag">Remove tag</button>
+        <p v-if="bulkError" class="bulk-error" role="alert">{{ bulkError }}</p>
+      </div>
+
       <div v-if="tasksStore.loading" class="loading-small">Loading...</div>
       
       <div v-else class="tasks-sections">
@@ -729,6 +939,14 @@ onUnmounted(() => {
                 :class="['task-item', { selected: isSelected(task) }, priorityClass(task.priority)]"
                 @click="selectTask(task)"
               >
+                <input
+                  type="checkbox"
+                  class="multi-select-checkbox"
+                  :checked="isMultiSelectChecked(task.id)"
+                  :aria-label="`Select ${task.title}`"
+                  @click.stop
+                  @change="onMultiSelectToggle(task, $event)"
+                />
                 <button class="task-checkbox" @click="toggleTask(task, $event)" title="Mark complete">
                   &#9744;
                 </button>
@@ -804,6 +1022,14 @@ onUnmounted(() => {
                 :class="['task-item', { selected: isSelected(task) }, priorityClass(task.priority)]"
                 @click="selectTask(task)"
               >
+                <input
+                  type="checkbox"
+                  class="multi-select-checkbox"
+                  :checked="isMultiSelectChecked(task.id)"
+                  :aria-label="`Select ${task.title}`"
+                  @click.stop
+                  @change="onMultiSelectToggle(task, $event)"
+                />
                 <button class="task-checkbox" @click="toggleTask(task, $event)" title="Mark complete">
                   &#9744;
                 </button>
@@ -878,6 +1104,14 @@ onUnmounted(() => {
               :class="['task-item', 'completed', { selected: isSelected(task) }, priorityClass(task.priority)]"
               @click="selectTask(task)"
             >
+              <input
+                type="checkbox"
+                class="multi-select-checkbox"
+                :checked="isMultiSelectChecked(task.id)"
+                :aria-label="`Select ${task.title}`"
+                @click.stop
+                @change="onMultiSelectToggle(task, $event)"
+              />
               <button class="task-checkbox" @click="toggleTask(task, $event)" title="Mark incomplete">
                 &#9745;
               </button>
@@ -1357,6 +1591,19 @@ button.small {
   color: var(--color-text);
 }
 
+.multi-select-checkbox {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.task-item.selected .multi-select-checkbox {
+  accent-color: white;
+}
+
 .task-info {
   flex: 1;
   display: flex;
@@ -1791,6 +2038,65 @@ button.small {
   padding: 4px 16px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
+}
+
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.bulk-count {
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.bulk-error {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-error, #c0392b);
+}
+
+.sort-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.sort-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+}
+
+.sort-select:focus {
+  border-color: var(--color-primary);
 }
 
 /* Tag Filter Bar */

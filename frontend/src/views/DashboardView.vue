@@ -2,7 +2,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectsStore, useTasksStore, useWorkspaceStore } from '../stores'
-import type { Task } from '../types'
+import { githubApi } from '../api/client'
+import type { GithubSummaryEntry, Task } from '../types'
+import { buildTagChipSummary } from '../lib/dashboardTagChips'
+import {
+  clearSelectedDashboardTag,
+  computeProjectCardStats,
+  filterTasksByTag,
+  shouldShowTagFilterEmptyState,
+} from '../lib/dashboardTagFilter'
 
 const router = useRouter()
 const projectsStore = useProjectsStore()
@@ -10,28 +18,52 @@ const tasksStore = useTasksStore()
 const workspaceStore = useWorkspaceStore()
 
 const loading = ref(true)
+const selectedDashboardTag = ref<string | null>(null)
+const githubSummary = ref<GithubSummaryEntry[]>([])
 
-// Group tasks by project
+const githubSummaryByProject = computed(() =>
+  Object.fromEntries(githubSummary.value.map(e => [e.project_id, e])),
+)
+
+const tagChipSummary = computed(() => buildTagChipSummary(tasksStore.allTasks))
+
+function toggleDashboardTagChip(tag: string) {
+  selectedDashboardTag.value = selectedDashboardTag.value === tag ? null : tag
+}
+
+function clearDashboardTagFilter() {
+  selectedDashboardTag.value = clearSelectedDashboardTag(selectedDashboardTag.value)
+}
+
+const showTagFilterEmptyState = computed(
+  () =>
+    !loading.value &&
+    shouldShowTagFilterEmptyState(selectedDashboardTag.value, projectSummaries.value.length),
+)
+
+const showWelcomeEmptyState = computed(
+  () =>
+    !loading.value &&
+    projectsStore.sortedProjects.length === 0 &&
+    !showTagFilterEmptyState.value,
+)
+
 const projectSummaries = computed(() => {
-  return projectsStore.sortedProjects.map(project => {
-    const projectTasks = tasksStore.allTasks.filter(t => t.project_id === project.id)
-    const active = projectTasks.filter(t => !t.completed && t.is_active)
-    const backlog = projectTasks.filter(t => !t.completed && !t.is_active)
-    const completed = projectTasks.filter(t => t.completed)
-    const overdue = active.filter(t => {
-      if (!t.due_date) return false
-      return new Date(t.due_date) < new Date()
-    })
+  const tag = selectedDashboardTag.value
+  const todayLocal = new Date()
 
-    return {
-      ...project,
-      activeTasks: active,
-      backlogCount: backlog.length,
-      completedCount: completed.length,
-      overdueCount: overdue.length,
-      totalCount: projectTasks.length,
-    }
-  })
+  return projectsStore.sortedProjects
+    .map(project => {
+      const projectTasks = tasksStore.allTasks.filter(t => t.project_id === project.id)
+      const tasksForCard = tag ? filterTasksByTag(projectTasks, tag) : projectTasks
+      const stats = computeProjectCardStats(tasksForCard, todayLocal)
+
+      return {
+        ...project,
+        ...stats,
+      }
+    })
+    .filter(project => !tag || project.totalCount > 0)
 })
 
 function formatDueDate(dateStr?: string) {
@@ -85,6 +117,11 @@ onMounted(async () => {
       projectsStore.loadProjects(),
       tasksStore.loadAllTasks()
     ])
+    try {
+      githubSummary.value = await githubApi.getSummary()
+    } catch {
+      // GitHub counts are optional on the dashboard
+    }
   } finally {
     loading.value = false
   }
@@ -103,13 +140,37 @@ onMounted(async () => {
 
     <div v-if="loading" class="loading">Loading...</div>
 
-    <div v-else-if="projectSummaries.length === 0" class="empty-state">
+    <div
+      v-else-if="tagChipSummary.length > 0"
+      class="dashboard-tag-chips"
+    >
+      <button
+        v-for="chip in tagChipSummary"
+        :key="chip.tag"
+        type="button"
+        :class="['tag-chip', { active: selectedDashboardTag === chip.tag }]"
+        @click="toggleDashboardTagChip(chip.tag)"
+      >
+        {{ chip.tag }}
+        <span class="tag-chip-count">{{ chip.count }}</span>
+      </button>
+    </div>
+
+    <div v-if="showTagFilterEmptyState" class="empty-state tag-filter-empty">
+      <h3>No tasks with tag "{{ selectedDashboardTag }}"</h3>
+      <p>No incomplete tasks match this tag across your projects.</p>
+      <button type="button" class="primary" style="margin-top: 16px" @click="clearDashboardTagFilter">
+        Clear tag filter
+      </button>
+    </div>
+
+    <div v-else-if="showWelcomeEmptyState" class="empty-state">
       <h3>Welcome to Ironpad</h3>
       <p>Create your first project to get started.</p>
       <button class="primary" @click="createProject" style="margin-top: 16px">Create Project</button>
     </div>
 
-    <div v-else class="dashboard-grid">
+    <div v-else-if="projectSummaries.length > 0" class="dashboard-grid">
       <div
         v-for="project in projectSummaries"
         :key="project.id"
@@ -129,6 +190,20 @@ onMounted(async () => {
               {{ project.overdueCount }} overdue
             </span>
           </div>
+          <router-link
+            v-if="
+              githubSummaryByProject[project.id] &&
+              githubSummaryByProject[project.id].assigned_issues +
+                githubSummaryByProject[project.id].review_pulls >
+                0
+            "
+            :to="{ name: 'project-github', params: { id: project.id } }"
+            class="github-summary-link"
+            @click.stop
+          >
+            {{ githubSummaryByProject[project.id].assigned_issues }} assigned ·
+            {{ githubSummaryByProject[project.id].review_pulls }} reviews
+          </router-link>
         </div>
 
         <!-- Active Tasks List -->
@@ -190,6 +265,51 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.dashboard-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.tag-chip {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.tag-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tag-chip.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.tag-chip-count {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.tag-chip.active .tag-chip-count {
+  opacity: 1;
 }
 
 .dashboard-header {
@@ -261,6 +381,19 @@ onMounted(async () => {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.github-summary-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.github-summary-link:hover {
+  text-decoration: underline;
 }
 
 .stat {

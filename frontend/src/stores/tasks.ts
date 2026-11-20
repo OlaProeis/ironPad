@@ -140,7 +140,7 @@ export const useTasksStore = defineStore('tasks', () => {
   async function updateTaskMeta(
     projectId: string, 
     taskId: string, 
-    meta: { title?: string; section?: string; priority?: string; due_date?: string; is_active?: boolean; tags?: string[]; recurrence?: string; recurrence_interval?: number }
+    meta: { title?: string; section?: string; priority?: string; due_date?: string; is_active?: boolean; tags?: string[]; recurrence?: string; recurrence_interval?: number; completed?: boolean }
   ) {
     try {
       error.value = null

@@ -1,7 +1,14 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { Prompt, PromptFolder, PromptSearchResult, PromptSummary } from '../types'
+import type {
+  Prompt,
+  PromptFolder,
+  PromptKind,
+  PromptSearchResult,
+  PromptSummary
+} from '../types'
 import { promptsApi } from '../api/client'
+import { getLibraryRoot } from '../lib/libraryRoot'
 
 export const usePromptsStore = defineStore('prompts', () => {
   const prompts = ref<PromptSummary[]>([])
@@ -18,6 +25,13 @@ export const usePromptsStore = defineStore('prompts', () => {
   const activeTag = ref<string | null>(null)
   const query = ref('')
   const semanticMode = ref(true)
+
+  let focusRefreshHandler: (() => void) | null = null
+
+  function rootForProjectGet(): string | undefined {
+    if (activeScope.value !== 'project' || !activeProjectId.value) return undefined
+    return getLibraryRoot(activeProjectId.value) ?? undefined
+  }
 
   const filteredPrompts = computed(() =>
     prompts.value.filter((p) => {
@@ -72,7 +86,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     try {
       loadingPrompt.value = true
       error.value = null
-      selectedPrompt.value = await promptsApi.get(id)
+      selectedPrompt.value = await promptsApi.get(id, rootForProjectGet())
     } catch (err) {
       error.value = `Failed to load prompt: ${err}`
       selectedPrompt.value = null
@@ -81,12 +95,45 @@ export const usePromptsStore = defineStore('prompts', () => {
     }
   }
 
+  async function reloadOpen() {
+    const open = selectedPrompt.value
+    if (!open?.id) return
+    try {
+      error.value = null
+      const updated = await promptsApi.get(open.id, rootForProjectGet())
+      if (selectedPrompt.value?.id === open.id) {
+        selectedPrompt.value = updated
+      }
+    } catch (err) {
+      error.value = `Failed to reload prompt: ${err}`
+    }
+  }
+
+  function registerFocusRefresh() {
+    if (focusRefreshHandler || typeof window === 'undefined') return
+    focusRefreshHandler = () => {
+      if (selectedPrompt.value?.kind === 'link') {
+        void reloadOpen()
+      }
+    }
+    window.addEventListener('focus', focusRefreshHandler)
+  }
+
+  function unregisterFocusRefresh() {
+    if (!focusRefreshHandler || typeof window === 'undefined') return
+    window.removeEventListener('focus', focusRefreshHandler)
+    focusRefreshHandler = null
+  }
+
   async function createPrompt(payload: {
     title?: string
     folder?: string
     tags?: string[]
     description?: string
     content?: string
+    kind?: PromptKind
+    source?: string
+    template?: boolean
   }) {
     const created = await promptsApi.create({
       scope: activeScope.value,
@@ -104,6 +151,9 @@ export const usePromptsStore = defineStore('prompts', () => {
     tags?: string[]
     description?: string
     content?: string
+    kind?: PromptKind
+    source?: string
+    template?: boolean
   }) {
     const updated = await promptsApi.update(id, payload)
     selectedPrompt.value = updated
@@ -178,6 +228,9 @@ export const usePromptsStore = defineStore('prompts', () => {
     loadPrompts,
     loadFolders,
     loadPrompt,
+    reloadOpen,
+    registerFocusRefresh,
+    unregisterFocusRefresh,
     createPrompt,
     updatePrompt,
     deletePrompt,
