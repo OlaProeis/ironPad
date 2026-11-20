@@ -56,7 +56,9 @@ once_cell = "1.19"
 
 # System tray (production mode)
 tray-item = "0.10"
-rfd = "0.18.0"
+# Linux file dialogs use the XDG portal. Skip rfd's default `wayland` feature so the
+# release build does not need libwayland-dev or link libwayland-client.
+rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
 
 # Linux: tray-item needs ksni feature (pure-Rust D-Bus StatusNotifierItem)
 [target.'cfg(target_os = "linux")'.dependencies]
